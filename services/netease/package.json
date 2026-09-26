@@ -1,0 +1,12 @@
+{
+  "name": "@webmuic/backend-netease",
+  "version": "0.1.0",
+  "private": true,
+  "description": "网易云音乐后端：封装 NeteaseCloudMusicApi 4.32.0（需以 Node 20 运行）",
+  "scripts": {
+    "start": "node node_modules/NeteaseCloudMusicApi/app.js"
+  },
+  "dependencies": {
+    "NeteaseCloudMusicApi": "4.32.0"
+  }
+}

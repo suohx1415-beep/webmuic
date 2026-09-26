@@ -1,0 +1,24 @@
+{
+  "name": "@webmuic/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "webmuic 前端：聚合网易云与 QQ 音乐的 WebUI 播放器",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "pinia": "^2.2.6",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10"
+  }
+}

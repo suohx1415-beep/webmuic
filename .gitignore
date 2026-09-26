@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.tools/
+*.log
+npm-debug.log*
+
+# 凭证：绝不入库
+.env.local
+.env
+**/.env.local
+# 网关写给 QQ 后端热读取的 cookie 文件
+apps/gateway/.qq-cookie.txt
+
+# QQ 后端为独立克隆仓库，不纳入本仓库
+services/qq/
+
+.DS_Store
+*.tsbuildinfo

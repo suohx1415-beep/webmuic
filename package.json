@@ -1,0 +1,17 @@
+{
+  "name": "webmuic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本机自用的 WebUI 音乐播放器：聚合网易云音乐与 QQ 音乐",
+  "scripts": {
+    "dev": "node scripts/dev-all.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "routes": "node scripts/dump-routes.mjs",
+    "patch:qq": "node scripts/patch-qq-backend.mjs",
+    "test": "pnpm --filter @webmuic/gateway test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20 <21"
+  }
+}
