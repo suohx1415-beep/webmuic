@@ -78,7 +78,13 @@ export const api = {
   health: () => request<HealthResponse>('/api/health'),
 
   search: (params: { q: string; platform?: string; limit?: number; offset?: number }) =>
-    request<SearchResponse>(`/api/search${query(params)}`),
+    request<SearchResponse>(`/api/search${query({ ...params, type: 'song' })}`),
+
+  searchPlaylists: (params: { q: string; platform?: string; limit?: number; offset?: number }) =>
+    request<import('./types').SearchPlaylistsResponse>(`/api/search${query({ ...params, type: 'playlist' })}`),
+
+  searchAlbums: (params: { q: string; platform?: string; limit?: number; offset?: number }) =>
+    request<import('./types').SearchAlbumsResponse>(`/api/search${query({ ...params, type: 'album' })}`),
 
   suggest: (q: string) => request<{ suggestions: string[] }>(`/api/search/suggest${query({ q })}`),
 
@@ -90,6 +96,10 @@ export const api = {
   lyric: (id: string) => request<LyricResponse>(`/api/track/${encodeURIComponent(id)}/lyric`),
 
   playlist: (id: string) => request<PlaylistResponse>(`/api/playlist/${encodeURIComponent(id)}`),
+
+  album: (id: string) => request<PlaylistResponse>(`/api/album/${encodeURIComponent(id)}`),
+
+  userPlaylists: () => request<import('./types').UserLibraryResponse>('/api/user/playlists'),
 
   recommendDaily: (limit = 30) => request<RecommendResponse>(`/api/recommend/daily${query({ limit })}`),
 

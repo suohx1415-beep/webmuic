@@ -147,7 +147,7 @@ onMounted(async () => {
 
     <!-- 抽屉组件 -->
     <QueueDrawer :open="queueOpen" @close="queueOpen = false" />
-    <LyricDrawer :open="lyricOpen" @close="lyricOpen = false" />
+    <LyricDrawer :open="lyricOpen" @close="lyricOpen = false" @seek="seek" />
 
     <!-- 播放致命异常弹条 -->
     <div

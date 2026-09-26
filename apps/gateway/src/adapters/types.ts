@@ -1,9 +1,28 @@
-import type { LyricResult, Platform, PlaylistResult, QualityLevel, Track } from '../types.js';
+import type {
+  AlbumCard,
+  LyricResult,
+  Platform,
+  PlaylistCard,
+  PlaylistResult,
+  QualityLevel,
+  Track,
+  UserPlatformLibrary,
+} from '../types.js';
 import { QUALITY_LADDER } from '../types.js';
 
 export interface SearchResult {
   tracks: Track[];
   /** 平台报告的总数，做分页提示用 */
+  total: number;
+}
+
+export interface PlaylistSearchResult {
+  playlists: PlaylistCard[];
+  total: number;
+}
+
+export interface AlbumSearchResult {
+  albums: AlbumCard[];
   total: number;
 }
 
@@ -27,9 +46,13 @@ export interface DailyRecommendResult {
 export interface Adapter {
   readonly platform: Platform;
   search(keywords: string, opts: { limit: number; offset: number }): Promise<SearchResult>;
+  searchPlaylists(keywords: string, opts: { limit: number; offset: number }): Promise<PlaylistSearchResult>;
+  searchAlbums(keywords: string, opts: { limit: number; offset: number }): Promise<AlbumSearchResult>;
   trackDetail(platformTrackId: string): Promise<Track | null>;
   lyric(platformTrackId: string): Promise<LyricResult>;
   playlist(playlistId: string): Promise<PlaylistResult>;
+  album(albumId: string): Promise<PlaylistResult>;
+  userLibrary(): Promise<UserPlatformLibrary>;
   resolveUrl(platformTrackId: string, desired: QualityLevel): Promise<ResolvedUpstream>;
   /** 推荐曲目；附带来源信息，便于界面标注真实来源并给出完整歌单入口 */
   dailyRecommend(limit: number): Promise<DailyRecommendResult>;

@@ -1,8 +1,13 @@
 import { Router } from 'express';
-import { searchAll, ALL_PLATFORMS } from '../adapters/index.js';
+import {
+  ALL_PLATFORMS,
+  searchAlbumsAll,
+  searchAll,
+  searchPlaylistsAll,
+} from '../adapters/index.js';
 import { err } from '../errors.js';
 import { asyncHandler, queryInt, queryString } from '../http.js';
-import type { DegradedInfo, Platform } from '../types.js';
+import type { DegradedInfo, Platform, SearchType } from '../types.js';
 
 export const searchRouter = Router();
 
@@ -13,16 +18,77 @@ function parsePlatform(value: string): Platform[] {
 }
 
 /**
- * GET /api/search?q=&platform=all&limit=20&offset=0
+ * GET /api/search?q=&type=song|playlist|album&platform=all&limit=20&offset=0
  * 任一平台失败都会返回另一平台的结果，并在 degraded 里说明原因。
  */
 searchRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const q = queryString(req, 'q', { required: true });
+    const type = (queryString(req, 'type') || 'song') as SearchType;
     const platforms = parsePlatform(queryString(req, 'platform'));
     const limit = queryInt(req, 'limit', { min: 1, max: 50, fallback: 20 });
     const offset = queryInt(req, 'offset', { min: 0, max: 1000, fallback: 0 });
+
+    if (type === 'playlist') {
+      const result = await searchPlaylistsAll(q, { limit, offset }, platforms);
+      if (result.ok.length === 0) {
+        const first = platforms[0] as Platform;
+        const failure = result.failed[first];
+        throw err.upstreamUnavailable(first, failure?.message ?? '歌单搜索失败');
+      }
+      const degradedPlatforms = platforms.filter((p) => !result.ok.includes(p));
+      const degraded: DegradedInfo | undefined = degradedPlatforms.length
+        ? {
+            platforms: degradedPlatforms,
+            reasons: Object.fromEntries(
+              degradedPlatforms.map((p) => [p, result.failed[p]?.message ?? '不可用']),
+            ),
+          }
+        : undefined;
+
+      res.json({
+        query: q,
+        type: 'playlist',
+        offset,
+        limit,
+        counts: result.counts,
+        totals: result.totals,
+        playlists: result.playlists,
+        ...(degraded ? { degraded } : {}),
+      });
+      return;
+    }
+
+    if (type === 'album') {
+      const result = await searchAlbumsAll(q, { limit, offset }, platforms);
+      if (result.ok.length === 0) {
+        const first = platforms[0] as Platform;
+        const failure = result.failed[first];
+        throw err.upstreamUnavailable(first, failure?.message ?? '专辑搜索失败');
+      }
+      const degradedPlatforms = platforms.filter((p) => !result.ok.includes(p));
+      const degraded: DegradedInfo | undefined = degradedPlatforms.length
+        ? {
+            platforms: degradedPlatforms,
+            reasons: Object.fromEntries(
+              degradedPlatforms.map((p) => [p, result.failed[p]?.message ?? '不可用']),
+            ),
+          }
+        : undefined;
+
+      res.json({
+        query: q,
+        type: 'album',
+        offset,
+        limit,
+        counts: result.counts,
+        totals: result.totals,
+        albums: result.albums,
+        ...(degraded ? { degraded } : {}),
+      });
+      return;
+    }
 
     const result = await searchAll(q, { limit, offset }, platforms);
 
@@ -45,6 +111,7 @@ searchRouter.get(
 
     res.json({
       query: q,
+      type: 'song',
       offset,
       limit,
       counts: result.counts,

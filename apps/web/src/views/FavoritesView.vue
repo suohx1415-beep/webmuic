@@ -1,79 +1,670 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { api, ApiError } from '@/api/client';
+import type { PlaylistCard, UserLibraryResponse } from '@/api/types';
 import Icon from '@/components/Icon.vue';
+import PlatformBadge from '@/components/PlatformBadge.vue';
 import TrackList from '@/components/TrackList.vue';
 import { formatTime } from '@/format';
-import { useFavoritesStore } from '@/stores/favorites';
+import { useAuthStore } from '@/stores/auth';
+import { useFavoritesStore, type SavedPlaylistItem } from '@/stores/favorites';
 import { usePlayerStore } from '@/stores/player';
 
 const emit = defineEmits<{ notify: [message: string] }>();
-
+const router = useRouter();
 const favorites = useFavoritesStore();
 const player = usePlayerStore();
+const auth = useAuthStore();
+
+type TabType = 'cloud' | 'local' | 'saved';
+const activeTab = ref<TabType>('cloud');
+
+const userLibrary = ref<UserLibraryResponse | null>(null);
+const libraryLoading = ref(false);
+const actionLoadingId = ref<string | null>(null);
 
 const totalDuration = computed(() =>
   favorites.tracks.reduce((sum, t) => sum + t.durationMs / 1000, 0),
 );
 
-function playAll(): void {
+async function loadLibrary(): Promise<void> {
+  libraryLoading.value = true;
+  try {
+    const res = await api.userPlaylists();
+    userLibrary.value = res;
+  } catch {
+    // 忽略加载错误，退化展示
+  } finally {
+    libraryLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadLibrary();
+});
+
+function playAllLocal(): void {
   if (favorites.tracks.length === 0) return;
   player.setQueue(favorites.tracks, 0);
   player.playing = true;
   emit('notify', `已把收藏的 ${favorites.tracks.length} 首歌曲加入播放队列`);
 }
 
-function clearAll(): void {
+function clearAllLocal(): void {
   if (!confirm('确定要清空全部收藏歌曲吗？此操作不可撤销。')) return;
   const count = favorites.tracks.length;
   favorites.clear();
   emit('notify', `已清空 ${count} 首收藏`);
 }
+
+async function playPlaylist(id: string, name: string): Promise<void> {
+  actionLoadingId.value = id;
+  try {
+    const res = await api.playlist(id);
+    if (!res.tracks || res.tracks.length === 0) {
+      emit('notify', '该歌单暂无可用曲目');
+      return;
+    }
+    player.setQueue(res.tracks, 0);
+    player.playing = true;
+    emit('notify', `已开始播放《${name}》共 ${res.tracks.length} 首`);
+  } catch (e) {
+    emit('notify', e instanceof ApiError ? e.message : '加载歌单失败');
+  } finally {
+    actionLoadingId.value = null;
+  }
+}
+
+async function enqueuePlaylist(id: string, name: string): Promise<void> {
+  actionLoadingId.value = id;
+  try {
+    const res = await api.playlist(id);
+    if (!res.tracks || res.tracks.length === 0) {
+      emit('notify', '该歌单暂无可用曲目');
+      return;
+    }
+    const added = player.append(res.tracks);
+    emit('notify', added > 0 ? `已追加《${name}》的 ${added} 首曲目到队列` : '曲目已在播放队列中');
+  } catch (e) {
+    emit('notify', e instanceof ApiError ? e.message : '追加到队列失败');
+  } finally {
+    actionLoadingId.value = null;
+  }
+}
+
+function openDetail(id: string): void {
+  router.push(`/playlist/${id}`);
+}
+
+function goToSettings(): void {
+  router.push('/settings');
+}
 </script>
 
 <template>
-  <!-- 收藏头部横幅 -->
-  <div class="favorites-banner">
-    <div class="favorites-icon-badge">
-      <Icon name="heart-filled" size="32" />
+  <div class="page-header">
+    <h1 class="page-title">我的音乐资产与收藏</h1>
+    <p class="page-sub">
+      聚合原网易云与 QQ 音乐账号中的红心音乐、自建歌单，以及本机专属离线单曲收藏。
+    </p>
+  </div>
+
+  <!-- 分类导航 Tab -->
+  <div class="fav-tabs-bar">
+    <button
+      class="fav-tab-btn"
+      :class="{ active: activeTab === 'cloud' }"
+      @click="activeTab = 'cloud'"
+    >
+      <Icon name="sparkles" size="16" />
+      <span>云端红心与歌单</span>
+    </button>
+    <button
+      class="fav-tab-btn"
+      :class="{ active: activeTab === 'local' }"
+      @click="activeTab = 'local'"
+    >
+      <Icon name="heart-filled" size="16" />
+      <span>本机单曲 ({{ favorites.tracks.length }})</span>
+    </button>
+    <button
+      class="fav-tab-btn"
+      :class="{ active: activeTab === 'saved' }"
+      @click="activeTab = 'saved'"
+    >
+      <Icon name="queue" size="16" />
+      <span>收藏的歌单与专辑 ({{ favorites.playlists.length }})</span>
+    </button>
+  </div>
+
+  <!-- Tab 1: 云端红心与账号歌单 -->
+  <div v-if="activeTab === 'cloud'" class="tab-content">
+    <div v-if="libraryLoading" class="notice ok">
+      <Icon name="refresh" size="16" class="spin-icon" />
+      <span>正在同步网易云与 QQ 音乐账号歌单...</span>
     </div>
-    <div class="favorites-info">
-      <h1 class="page-title">我的音乐收藏</h1>
-      <p class="page-sub">
-        曲目数据仅保存在本机浏览器 LocalStorage 中，隐私绝不上云。
-      </p>
-      <div class="favorites-meta-row">
-        <span>共 {{ favorites.tracks.length }} 首歌曲</span>
-        <span class="meta-dot">·</span>
-        <span>总时长 {{ formatTime(totalDuration) }}</span>
+
+    <!-- 顶栏核心：双平台红心专属播放卡片 -->
+    <div class="heart-hero-grid">
+      <!-- 网易云红心音乐卡片 -->
+      <div class="heart-card netease-heart">
+        <div class="heart-card-badge">
+          <PlatformBadge platform="netease" />
+          <span class="badge-text">网易云红心</span>
+        </div>
+        <div class="heart-card-body">
+          <div class="heart-avatar">
+            <Icon name="heart-filled" size="36" style="color: #ff4b60" />
+          </div>
+          <div class="heart-card-meta">
+            <h3 class="heart-card-title">我喜欢的音乐</h3>
+            <p v-if="userLibrary?.netease?.user" class="heart-card-sub">
+              {{ userLibrary.netease.user.nickname ? `用户: ${userLibrary.netease.user.nickname}` : '已连接网易云' }}
+              <span v-if="userLibrary.netease.favoritePlaylist?.trackCount"> · {{ userLibrary.netease.favoritePlaylist.trackCount }} 首</span>
+            </p>
+            <p v-else class="heart-card-sub muted">未配置登录凭证</p>
+          </div>
+        </div>
+        <div class="heart-card-footer">
+          <template v-if="userLibrary?.netease?.configured && userLibrary.netease.favoritePlaylist">
+            <button
+              class="primary heart-action-btn"
+              :disabled="actionLoadingId === userLibrary.netease.favoritePlaylist.id"
+              @click="playPlaylist(userLibrary.netease.favoritePlaylist.id, '网易云我喜欢的音乐')"
+            >
+              <Icon name="play" size="15" />
+              <span>播放红心歌单</span>
+            </button>
+            <button
+              class="ghost heart-action-btn"
+              @click="openDetail(userLibrary.netease.favoritePlaylist.id)"
+            >
+              <span>查看全部曲目</span>
+            </button>
+          </template>
+          <template v-else>
+            <button class="ghost login-jump-btn" @click="goToSettings">
+              <Icon name="settings" size="14" />
+              <span>前往「设置」扫码登录网易云</span>
+            </button>
+          </template>
+        </div>
       </div>
-      <div class="favorites-actions-row">
-        <button
-          class="primary play-all-btn"
-          :disabled="favorites.tracks.length === 0"
-          @click="playAll"
-        >
-          <Icon name="play" size="16" />
-          <span>播放全部</span>
+
+      <!-- QQ 音乐红心音乐卡片 -->
+      <div class="heart-card qq-heart">
+        <div class="heart-card-badge">
+          <PlatformBadge platform="qq" />
+          <span class="badge-text">QQ 音乐我喜欢</span>
+        </div>
+        <div class="heart-card-body">
+          <div class="heart-avatar">
+            <Icon name="heart-filled" size="36" style="color: #10b981" />
+          </div>
+          <div class="heart-card-meta">
+            <h3 class="heart-card-title">我喜欢</h3>
+            <p v-if="userLibrary?.qq?.user" class="heart-card-sub">
+              {{ userLibrary.qq.user.uin ? `账号: ${userLibrary.qq.user.uin}` : '已连接 QQ 音乐' }}
+              <span v-if="userLibrary.qq.favoritePlaylist?.trackCount"> · {{ userLibrary.qq.favoritePlaylist.trackCount }} 首</span>
+            </p>
+            <p v-else class="heart-card-sub muted">未配置登录凭证</p>
+          </div>
+        </div>
+        <div class="heart-card-footer">
+          <template v-if="userLibrary?.qq?.configured && userLibrary.qq.favoritePlaylist">
+            <button
+              class="primary heart-action-btn qq-play-theme"
+              :disabled="actionLoadingId === userLibrary.qq.favoritePlaylist.id"
+              @click="playPlaylist(userLibrary.qq.favoritePlaylist.id, 'QQ 音乐我喜欢')"
+            >
+              <Icon name="play" size="15" />
+              <span>播放我喜欢</span>
+            </button>
+            <button
+              class="ghost heart-action-btn"
+              @click="openDetail(userLibrary.qq.favoritePlaylist.id)"
+            >
+              <span>查看全部曲目</span>
+            </button>
+          </template>
+          <template v-else>
+            <button class="ghost login-jump-btn" @click="goToSettings">
+              <Icon name="settings" size="14" />
+              <span>前往「设置」扫码登录 QQ 音乐</span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 账号自建歌单列表展示 -->
+    <div class="section-container" style="margin-top: 32px">
+      <div class="section-header">
+        <h3 class="section-title">我的自建与云端歌单</h3>
+        <span class="muted small">点击卡片可查看完整歌单，或使用操作按钮即时加入队列播放。</span>
+      </div>
+
+      <div
+        v-if="(userLibrary?.netease?.playlists.length || 0) + (userLibrary?.qq?.playlists.length || 0) === 0"
+        class="empty-cloud-box"
+      >
+        <Icon name="queue" size="36" class="muted" />
+        <p>暂未获取到云端歌单。请确保已在「设置」登录网易云或 QQ 音乐账号。</p>
+        <button class="primary" style="margin-top: 10px" @click="goToSettings">
+          前往登录
         </button>
-        <button
-          class="ghost clear-btn"
-          :disabled="favorites.tracks.length === 0"
-          @click="clearAll"
-        >
-          清空收藏
-        </button>
+      </div>
+
+      <div v-else class="card-grid">
+        <!-- 网易云自建歌单 (排除第一个已在顶栏展示的红心歌单) -->
+        <template v-for="item in userLibrary?.netease?.playlists" :key="item.id">
+          <div v-if="!item.isFavorite" class="collection-card">
+            <div class="card-cover-wrapper" @click="openDetail(item.id)">
+              <img
+                v-if="item.coverUrl"
+                :src="item.coverUrl"
+                :alt="item.name"
+                class="card-cover-img"
+                loading="lazy"
+              />
+              <div v-else class="card-cover-placeholder">
+                <Icon name="queue" size="32" />
+              </div>
+              <div class="cover-overlay">
+                <button
+                  class="cover-play-btn"
+                  title="立即播放全部"
+                  :disabled="actionLoadingId === item.id"
+                  @click.stop="playPlaylist(item.id, item.name)"
+                >
+                  <Icon name="play" size="20" />
+                </button>
+              </div>
+              <PlatformBadge platform="netease" class="card-platform-badge" />
+            </div>
+
+            <div class="card-info">
+              <h4 class="card-title" :title="item.name" @click="openDetail(item.id)">
+                {{ item.name }}
+              </h4>
+              <div class="card-meta">
+                <span>{{ item.trackCount || 0 }} 首</span>
+              </div>
+              <div class="card-actions-bar">
+                <button
+                  class="ghost card-action-btn"
+                  title="追加到队列"
+                  :disabled="actionLoadingId === item.id"
+                  @click.stop="enqueuePlaylist(item.id, item.name)"
+                >
+                  <Icon name="queue" size="14" />
+                  <span>追加</span>
+                </button>
+                <button
+                  class="ghost card-action-btn"
+                  title="打开详情"
+                  @click.stop="openDetail(item.id)"
+                >
+                  <Icon name="discover" size="14" />
+                  <span>查看</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- QQ 音乐自建歌单 (排除红心歌单) -->
+        <template v-for="item in userLibrary?.qq?.playlists" :key="item.id">
+          <div v-if="!item.isFavorite" class="collection-card">
+            <div class="card-cover-wrapper" @click="openDetail(item.id)">
+              <img
+                v-if="item.coverUrl"
+                :src="item.coverUrl"
+                :alt="item.name"
+                class="card-cover-img"
+                loading="lazy"
+              />
+              <div v-else class="card-cover-placeholder">
+                <Icon name="queue" size="32" />
+              </div>
+              <div class="cover-overlay">
+                <button
+                  class="cover-play-btn"
+                  title="立即播放全部"
+                  :disabled="actionLoadingId === item.id"
+                  @click.stop="playPlaylist(item.id, item.name)"
+                >
+                  <Icon name="play" size="20" />
+                </button>
+              </div>
+              <PlatformBadge platform="qq" class="card-platform-badge" />
+            </div>
+
+            <div class="card-info">
+              <h4 class="card-title" :title="item.name" @click="openDetail(item.id)">
+                {{ item.name }}
+              </h4>
+              <div class="card-meta">
+                <span>{{ item.trackCount || 0 }} 首</span>
+              </div>
+              <div class="card-actions-bar">
+                <button
+                  class="ghost card-action-btn"
+                  title="追加到队列"
+                  :disabled="actionLoadingId === item.id"
+                  @click.stop="enqueuePlaylist(item.id, item.name)"
+                >
+                  <Icon name="queue" size="14" />
+                  <span>追加</span>
+                </button>
+                <button
+                  class="ghost card-action-btn"
+                  title="打开详情"
+                  @click.stop="openDetail(item.id)"
+                >
+                  <Icon name="discover" size="14" />
+                  <span>查看</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 
-  <TrackList
-    :tracks="favorites.tracks"
-    empty-text="还没有收藏曲目。在歌曲列表中点击心形图标即可收藏。"
-    @error="emit('notify', $event)"
-  />
+  <!-- Tab 2: 本机单曲收藏 -->
+  <div v-else-if="activeTab === 'local'" class="tab-content">
+    <div class="favorites-banner">
+      <div class="favorites-icon-badge">
+        <Icon name="heart-filled" size="32" />
+      </div>
+      <div class="favorites-info">
+        <h2 class="favorites-hero-title">本机专属收藏单曲</h2>
+        <p class="page-sub">
+          曲目数据仅保存在本机浏览器 LocalStorage 中，隐私绝不上云。
+        </p>
+        <div class="favorites-meta-row">
+          <span>共 {{ favorites.tracks.length }} 首歌曲</span>
+          <span class="meta-dot">·</span>
+          <span>总时长 {{ formatTime(totalDuration) }}</span>
+        </div>
+        <div class="favorites-actions-row">
+          <button
+            class="primary play-all-btn"
+            :disabled="favorites.tracks.length === 0"
+            @click="playAllLocal"
+          >
+            <Icon name="play" size="16" />
+            <span>播放全部</span>
+          </button>
+          <button
+            class="ghost clear-btn"
+            :disabled="favorites.tracks.length === 0"
+            @click="clearAllLocal"
+          >
+            清空收藏
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <TrackList
+      :tracks="favorites.tracks"
+      empty-text="还没有收藏单曲。在歌曲列表中点击心形图标即可收藏。"
+      @error="emit('notify', $event)"
+    />
+  </div>
+
+  <!-- Tab 3: 收藏的歌单与专辑 -->
+  <div v-else-if="activeTab === 'saved'" class="tab-content">
+    <div v-if="favorites.playlists.length === 0" class="empty-cloud-box">
+      <Icon name="queue" size="36" class="muted" />
+      <p>还没有收藏任何歌单或专辑。可在搜索页或详情页点击「收藏」按钮保存。</p>
+      <button class="primary" style="margin-top: 10px" @click="router.push('/search')">
+        去搜歌单与专辑
+      </button>
+    </div>
+
+    <div v-else class="card-grid">
+      <div
+        v-for="item in favorites.playlists"
+        :key="item.id"
+        class="collection-card"
+      >
+        <div class="card-cover-wrapper" @click="openDetail(item.id)">
+          <img
+            v-if="item.coverUrl"
+            :src="item.coverUrl"
+            :alt="item.name"
+            class="card-cover-img"
+            loading="lazy"
+          />
+          <div v-else class="card-cover-placeholder">
+            <Icon :name="item.type === 'album' ? 'album' : 'queue'" size="32" />
+          </div>
+          <div class="cover-overlay">
+            <button
+              class="cover-play-btn"
+              title="立即播放全部"
+              :disabled="actionLoadingId === item.id"
+              @click.stop="playPlaylist(item.id, item.name)"
+            >
+              <Icon name="play" size="20" />
+            </button>
+          </div>
+          <PlatformBadge :platform="item.platform" class="card-platform-badge" />
+        </div>
+
+        <div class="card-info">
+          <div class="row" style="gap: 6px; margin-bottom: 4px">
+            <span class="playlist-tag">{{ item.type === 'album' ? '专辑' : '歌单' }}</span>
+          </div>
+          <h4 class="card-title" :title="item.name" @click="openDetail(item.id)">
+            {{ item.name }}
+          </h4>
+          <div class="card-meta">
+            <span v-if="item.creator" class="creator-name" :title="item.creator">{{ item.creator }}</span>
+            <span v-if="item.trackCount" class="track-count">{{ item.trackCount }} 首</span>
+          </div>
+          <div class="card-actions-bar">
+            <button
+              class="ghost card-action-btn"
+              title="追加到队列"
+              :disabled="actionLoadingId === item.id"
+              @click.stop="enqueuePlaylist(item.id, item.name)"
+            >
+              <Icon name="queue" size="14" />
+              <span>追加</span>
+            </button>
+            <button
+              class="ghost card-action-btn favorited"
+              title="取消收藏"
+              @click.stop="favorites.removePlaylist(item.id)"
+            >
+              <Icon name="heart-filled" size="14" />
+              <span>已收藏</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.fav-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.fav-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fav-tab-btn:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.fav-tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 500;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+/* 红心专属卡片栅格 */
+.heart-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.heart-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.heart-card.netease-heart {
+  background: linear-gradient(135deg, rgba(255, 75, 96, 0.08) 0%, var(--bg-surface) 60%);
+  border-color: rgba(255, 75, 96, 0.25);
+}
+
+.heart-card.qq-heart {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-surface) 60%);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.heart-card-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.badge-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.heart-card-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.heart-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.heart-card-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.heart-card-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.heart-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.heart-action-btn {
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+}
+
+.qq-play-theme {
+  background: #10b981;
+}
+
+.qq-play-theme:hover {
+  background: #059669;
+}
+
+.login-jump-btn {
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.login-jump-btn:hover {
+  color: var(--accent);
+}
+
+.section-container {
+  margin-bottom: 28px;
+}
+
+.section-header {
+  margin-bottom: 16px;
+}
+
+.section-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.empty-cloud-box {
+  padding: 48px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* 本机收藏横幅 */
 .favorites-banner {
   display: flex;
   align-items: flex-start;
@@ -84,6 +675,12 @@ function clearAll(): void {
   border-radius: var(--radius-md);
   margin-bottom: 28px;
   box-shadow: var(--shadow-sm);
+}
+
+.favorites-hero-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .favorites-icon-badge {
@@ -108,9 +705,9 @@ function clearAll(): void {
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--text-secondary);
   font-size: 13px;
-  color: var(--text-tertiary);
-  margin-top: 8px;
+  margin: 10px 0 16px;
 }
 
 .meta-dot {
@@ -121,15 +718,193 @@ function clearAll(): void {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
 }
 
 .play-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 20px;
-  font-size: 13.5px;
+  border-radius: var(--radius-full);
 }
 
 .clear-btn {
+  color: var(--text-tertiary);
   font-size: 13px;
+}
+
+.clear-btn:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+/* 歌单网格 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.collection-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.collection-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-focus);
+  box-shadow: var(--shadow-md);
+}
+
+.card-cover-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--bg-canvas);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.card-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.collection-card:hover .card-cover-img {
+  transform: scale(1.05);
+}
+
+.card-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.card-platform-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.cover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.card-cover-wrapper:hover .cover-overlay {
+  opacity: 1;
+}
+
+.cover-play-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: scale(0.9);
+  transition: transform var(--transition-fast);
+}
+
+.cover-play-btn:hover {
+  transform: scale(1.06);
+}
+
+.card-info {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.card-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-title:hover {
+  color: var(--accent);
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.creator-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+.track-count {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.card-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.card-action-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.card-action-btn:hover {
+  color: var(--accent);
+}
+
+.card-action-btn.favorited {
+  color: #f43f5e;
+}
+
+.playlist-tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
 }
 </style>

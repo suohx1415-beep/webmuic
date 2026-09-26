@@ -1,4 +1,4 @@
-import type { Platform, Track } from '../types.js';
+import type { AlbumCard, Platform, PlaylistCard, Track } from '../types.js';
 import { neteaseAdapter } from './netease.js';
 import { qqAdapter } from './qq.js';
 import type { Adapter, SearchResult } from './types.js';
@@ -76,3 +76,118 @@ export async function searchAll(
 
   return { tracks, counts, totals, ok, failed };
 }
+
+export interface AggregatedPlaylistSearch {
+  playlists: PlaylistCard[];
+  counts: Partial<Record<Platform, number>>;
+  totals: Partial<Record<Platform, number>>;
+  ok: Platform[];
+  failed: Partial<Record<Platform, { code: string; message: string }>>;
+}
+
+export async function searchPlaylistsAll(
+  keywords: string,
+  opts: { limit: number; offset: number },
+  platforms: Platform[],
+): Promise<AggregatedPlaylistSearch> {
+  const settled = await Promise.all(
+    platforms.map(async (platform) => {
+      try {
+        const result = await adapters[platform].searchPlaylists(keywords, opts);
+        return { platform, result, error: undefined as unknown };
+      } catch (error) {
+        return { platform, result: undefined, error };
+      }
+    }),
+  );
+
+  const perPlatform = new Map<Platform, PlaylistCard[]>();
+  const counts: Partial<Record<Platform, number>> = {};
+  const totals: Partial<Record<Platform, number>> = {};
+  const ok: Platform[] = [];
+  const failed: AggregatedPlaylistSearch['failed'] = {};
+
+  for (const entry of settled) {
+    if (entry.error !== undefined || !entry.result) {
+      const error = entry.error as { code?: string; message?: string } | undefined;
+      failed[entry.platform] = {
+        code: typeof error?.code === 'string' ? error.code : 'UPSTREAM_UNAVAILABLE',
+        message: typeof error?.message === 'string' ? error.message : '歌单搜索失败',
+      };
+      continue;
+    }
+    perPlatform.set(entry.platform, entry.result.playlists);
+    counts[entry.platform] = entry.result.playlists.length;
+    totals[entry.platform] = entry.result.total;
+    ok.push(entry.platform);
+  }
+
+  const playlists: PlaylistCard[] = [];
+  const maxLen = Math.max(0, ...[...perPlatform.values()].map((list) => list.length));
+  for (let i = 0; i < maxLen; i += 1) {
+    for (const platform of platforms) {
+      const item = perPlatform.get(platform)?.[i];
+      if (item) playlists.push(item);
+    }
+  }
+
+  return { playlists, counts, totals, ok, failed };
+}
+
+export interface AggregatedAlbumSearch {
+  albums: AlbumCard[];
+  counts: Partial<Record<Platform, number>>;
+  totals: Partial<Record<Platform, number>>;
+  ok: Platform[];
+  failed: Partial<Record<Platform, { code: string; message: string }>>;
+}
+
+export async function searchAlbumsAll(
+  keywords: string,
+  opts: { limit: number; offset: number },
+  platforms: Platform[],
+): Promise<AggregatedAlbumSearch> {
+  const settled = await Promise.all(
+    platforms.map(async (platform) => {
+      try {
+        const result = await adapters[platform].searchAlbums(keywords, opts);
+        return { platform, result, error: undefined as unknown };
+      } catch (error) {
+        return { platform, result: undefined, error };
+      }
+    }),
+  );
+
+  const perPlatform = new Map<Platform, AlbumCard[]>();
+  const counts: Partial<Record<Platform, number>> = {};
+  const totals: Partial<Record<Platform, number>> = {};
+  const ok: Platform[] = [];
+  const failed: AggregatedAlbumSearch['failed'] = {};
+
+  for (const entry of settled) {
+    if (entry.error !== undefined || !entry.result) {
+      const error = entry.error as { code?: string; message?: string } | undefined;
+      failed[entry.platform] = {
+        code: typeof error?.code === 'string' ? error.code : 'UPSTREAM_UNAVAILABLE',
+        message: typeof error?.message === 'string' ? error.message : '专辑搜索失败',
+      };
+      continue;
+    }
+    perPlatform.set(entry.platform, entry.result.albums);
+    counts[entry.platform] = entry.result.albums.length;
+    totals[entry.platform] = entry.result.total;
+    ok.push(entry.platform);
+  }
+
+  const albums: AlbumCard[] = [];
+  const maxLen = Math.max(0, ...[...perPlatform.values()].map((list) => list.length));
+  for (let i = 0; i < maxLen; i += 1) {
+    for (const platform of platforms) {
+      const item = perPlatform.get(platform)?.[i];
+      if (item) albums.push(item);
+    }
+  }
+
+  return { albums, counts, totals, ok, failed };
+}
+

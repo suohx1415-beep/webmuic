@@ -55,12 +55,76 @@ export interface LyricResponse {
   translated: string;
 }
 
+export type SearchType = 'song' | 'playlist' | 'album';
+
+export interface PlaylistCard {
+  id: string;
+  platform: Platform;
+  platformId: string;
+  type: 'playlist';
+  name: string;
+  coverUrl?: string;
+  trackCount?: number;
+  creator?: string;
+  playCount?: number;
+  isFavorite?: boolean;
+}
+
+export interface AlbumCard {
+  id: string;
+  platform: Platform;
+  platformId: string;
+  type: 'album';
+  name: string;
+  coverUrl?: string;
+  trackCount?: number;
+  artist?: string;
+  publishTime?: string;
+}
+
+export interface SearchPlaylistsResponse {
+  query: string;
+  type: 'playlist';
+  offset: number;
+  limit: number;
+  counts: Partial<Record<Platform, number>>;
+  totals: Partial<Record<Platform, number>>;
+  playlists: PlaylistCard[];
+  degraded?: DegradedInfo;
+}
+
+export interface SearchAlbumsResponse {
+  query: string;
+  type: 'album';
+  offset: number;
+  limit: number;
+  counts: Partial<Record<Platform, number>>;
+  totals: Partial<Record<Platform, number>>;
+  albums: AlbumCard[];
+  degraded?: DegradedInfo;
+}
+
 export interface PlaylistResponse {
   id: string;
   platform: Platform;
   name: string;
   coverUrl?: string;
+  description?: string;
+  creator?: string;
   tracks: Track[];
+  isAlbum?: boolean;
+}
+
+export interface UserPlatformLibrary {
+  configured: boolean;
+  user?: { id?: string; uin?: string; nickname?: string; avatarUrl?: string };
+  favoritePlaylist?: PlaylistCard;
+  playlists: PlaylistCard[];
+}
+
+export interface UserLibraryResponse {
+  netease: UserPlatformLibrary;
+  qq: UserPlatformLibrary;
 }
 
 export interface RecommendSection {

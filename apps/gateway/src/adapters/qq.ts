@@ -1,6 +1,15 @@
+import { getCookie, qqUin } from '../credentials.js';
 import { err } from '../errors.js';
 import { upstreamJson } from '../upstream.js';
-import type { LyricResult, PlaylistResult, QualityLevel, Track } from '../types.js';
+import type {
+  AlbumCard,
+  LyricResult,
+  PlaylistCard,
+  PlaylistResult,
+  QualityLevel,
+  Track,
+  UserPlatformLibrary,
+} from '../types.js';
 import { trackId } from '../types.js';
 import {
   asArray,
@@ -10,7 +19,9 @@ import {
   pickNumber,
   pickString,
   type Adapter,
+  type AlbumSearchResult,
   type DailyRecommendResult,
+  type PlaylistSearchResult,
   type ResolvedUpstream,
   type SearchResult,
 } from './types.js';
@@ -201,6 +212,125 @@ export const qqAdapter: Adapter = {
     };
   },
 
+  async searchPlaylists(keywords, { limit, offset }): Promise<PlaylistSearchResult> {
+    const page = Math.floor(offset / Math.max(1, limit)) + 1;
+    const postData = {
+      comm: {
+        g_tk: 5381,
+        format: 'json',
+        inCharset: 'utf-8',
+        outCharset: 'utf-8',
+        notice: 0,
+        platform: 'h5',
+        needNewCode: 1,
+      },
+      req_1: {
+        module: 'music.search.SearchCgiService',
+        method: 'DoSearchForQQMusicDesktop',
+        param: {
+          remoteplace: 'txt.mqq.all',
+          search_type: 3,
+          query: keywords,
+          page_num: page,
+          num_per_page: limit,
+        },
+      },
+    };
+    try {
+      const res = await upstreamJson<Json>('qq', 'https://u.y.qq.com/cgi-bin/musicu.fcg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Referer: 'https://y.qq.com/' },
+        body: JSON.stringify(postData),
+      });
+      const req1 = (res.req_1 ?? {}) as Json;
+      const data = (req1.data ?? {}) as Json;
+      const body = (data.body ?? {}) as Json;
+      const songlist = (body.songlist ?? {}) as Json;
+      const list = asArray(songlist.list);
+      const playlists: PlaylistCard[] = list.map((item) => {
+        const obj = item as Json;
+        const id = pickString(obj, 'dissid') || pickString(obj, 'disstid');
+        const creator = (obj.creator ?? {}) as Json;
+        return {
+          id: `qq:${id}`,
+          platform: 'qq',
+          platformId: id,
+          type: 'playlist',
+          name: pickString(obj, 'dissname') || `歌单 ${id}`,
+          coverUrl: normalizeCover(pickString(obj, 'imgurl')),
+          trackCount: pickNumber(obj, 'song_count'),
+          creator: pickString(creator, 'name') || undefined,
+          playCount: pickNumber(obj, 'listennum') || undefined,
+        };
+      });
+      return {
+        playlists,
+        total: pickNumber(songlist, 'totalnum') || playlists.length,
+      };
+    } catch {
+      return { playlists: [], total: 0 };
+    }
+  },
+
+  async searchAlbums(keywords, { limit, offset }): Promise<AlbumSearchResult> {
+    const page = Math.floor(offset / Math.max(1, limit)) + 1;
+    const postData = {
+      comm: {
+        g_tk: 5381,
+        format: 'json',
+        inCharset: 'utf-8',
+        outCharset: 'utf-8',
+        notice: 0,
+        platform: 'h5',
+        needNewCode: 1,
+      },
+      req_1: {
+        module: 'music.search.SearchCgiService',
+        method: 'DoSearchForQQMusicDesktop',
+        param: {
+          remoteplace: 'txt.mqq.all',
+          search_type: 2,
+          query: keywords,
+          page_num: page,
+          num_per_page: limit,
+        },
+      },
+    };
+    try {
+      const res = await upstreamJson<Json>('qq', 'https://u.y.qq.com/cgi-bin/musicu.fcg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Referer: 'https://y.qq.com/' },
+        body: JSON.stringify(postData),
+      });
+      const req1 = (res.req_1 ?? {}) as Json;
+      const data = (req1.data ?? {}) as Json;
+      const body = (data.body ?? {}) as Json;
+      const albumData = (body.album ?? {}) as Json;
+      const list = asArray(albumData.list);
+      const albums: AlbumCard[] = list.map((item) => {
+        const obj = item as Json;
+        const mid = pickString(obj, 'albumMID');
+        return {
+          id: `qq:album:${mid}`,
+          platform: 'qq',
+          platformId: mid,
+          type: 'album',
+          name: pickString(obj, 'albumName') || `专辑 ${mid}`,
+          coverUrl: pickString(obj, 'albumPic') || coverOf(mid),
+          trackCount: pickNumber(obj, 'song_count') || undefined,
+          artist: pickString(obj, 'singerName') || undefined,
+          publishTime: pickString(obj, 'publicTime') || undefined,
+        };
+      });
+      return {
+        albums,
+        total: pickNumber(albumData, 'totalnum') || albums.length,
+      };
+    } catch {
+      return { albums: [], total: 0 };
+    }
+  },
+
   async trackDetail(platformTrackId): Promise<Track | null> {
     const body = emptyEnvelope(await api('/getSongInfo', { songmid: platformTrackId }), 'getSongInfo');
     const info = (body.response?.songinfo as Json | undefined)?.data as Json | undefined;
@@ -231,8 +361,76 @@ export const qqAdapter: Adapter = {
       platform: 'qq',
       name: pickString(cd, 'dissname') || `歌单 ${playlistId}`,
       coverUrl: normalizeCover(pickString(cd, 'logo', 'imgurl')),
+      description: pickString(cd, 'desc') || undefined,
+      creator: pickString(cd, 'nickname') || undefined,
       tracks: compact(asArray(cd.songlist).map((item) => normalizeTrackInfo(item as Json))),
     };
+  },
+
+  async album(albumId): Promise<PlaylistResult> {
+    const body = emptyEnvelope(await api('/getAlbumInfo', { albummid: albumId }), 'getAlbumInfo');
+    const response = ((body.data ?? (body.response?.data as Json | undefined)) ?? {}) as Json;
+    const name = pickString(response, 'name') || `专辑 ${albumId}`;
+    const singer = pickString(response, 'singername') || '';
+    const list = asArray(response.list);
+    const tracks = compact(list.map((item) => normalizeSearchSong(item as Json)));
+    return {
+      id: `qq:album:${albumId}`,
+      platform: 'qq',
+      name: singer ? `${name} - ${singer}` : name,
+      coverUrl: coverOf(albumId),
+      description: pickString(response, 'desc') || undefined,
+      creator: singer || undefined,
+      tracks,
+      isAlbum: true,
+    };
+  },
+
+  async userLibrary(): Promise<UserPlatformLibrary> {
+    const cookie = getCookie('qq');
+    if (!cookie) return { configured: false, playlists: [] };
+    const uin = qqUin(cookie);
+    if (!uin) return { configured: true, playlists: [] };
+    try {
+      const url = `https://c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss?hostuin=${uin}&sin=0&size=100&format=json`;
+      const res = await upstreamJson<Json>('qq', url, {
+        headers: {
+          Cookie: cookie,
+          Referer: 'https://y.qq.com/',
+        },
+      });
+      const data = (res.data ?? {}) as Json;
+      const list = asArray(data.disslist);
+      const playlists: PlaylistCard[] = [];
+      let favoritePlaylist: PlaylistCard | undefined;
+      for (const item of list) {
+        const obj = item as Json;
+        const isFav = pickNumber(obj, 'dirid') === 201;
+        const pid = String(pickNumber(obj, 'tid') || pickString(obj, 'tid') || pickNumber(obj, 'dissid') || pickString(obj, 'dissid'));
+        const card: PlaylistCard = {
+          id: `qq:${pid}`,
+          platform: 'qq',
+          platformId: pid,
+          type: 'playlist',
+          name: pickString(obj, 'diss_name', 'dir_name') || (isFav ? '我喜欢' : `歌单 ${pid}`),
+          coverUrl: pickString(obj, 'diss_cover') && !pickString(obj, 'diss_cover').startsWith('?') ? normalizeCover(pickString(obj, 'diss_cover')) : undefined,
+          trackCount: pickNumber(obj, 'song_cnt'),
+          isFavorite: isFav,
+        };
+        if (isFav && !favoritePlaylist) {
+          favoritePlaylist = card;
+        }
+        playlists.push(card);
+      }
+      return {
+        configured: true,
+        user: { uin },
+        favoritePlaylist,
+        playlists,
+      };
+    } catch {
+      return { configured: true, user: { uin }, playlists: [] };
+    }
   },
 
   /**

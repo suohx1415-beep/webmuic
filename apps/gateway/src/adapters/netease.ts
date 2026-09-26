@@ -1,7 +1,16 @@
 import { getCookie } from '../credentials.js';
 import { err } from '../errors.js';
 import { upstreamJson } from '../upstream.js';
-import type { LyricResult, Platform, PlaylistResult, QualityLevel, Track } from '../types.js';
+import type {
+  AlbumCard,
+  LyricResult,
+  Platform,
+  PlaylistCard,
+  PlaylistResult,
+  QualityLevel,
+  Track,
+  UserPlatformLibrary,
+} from '../types.js';
 import { trackId } from '../types.js';
 import {
   asArray,
@@ -10,7 +19,9 @@ import {
   pickNumber,
   pickString,
   type Adapter,
+  type AlbumSearchResult,
   type DailyRecommendResult,
+  type PlaylistSearchResult,
   type ResolvedUpstream,
   type SearchResult,
 } from './types.js';
@@ -111,6 +122,60 @@ export const neteaseAdapter: Adapter = {
     };
   },
 
+  async searchPlaylists(keywords, { limit, offset }): Promise<PlaylistSearchResult> {
+    const body = await api('/cloudsearch', { keywords, type: 1000, limit, offset });
+    const result = (body.result ?? {}) as Json;
+    const list = asArray(result.playlists);
+    const playlists: PlaylistCard[] = list.map((item) => {
+      const obj = item as Json;
+      const pid = String(pickNumber(obj, 'id') || pickString(obj, 'id'));
+      const creator = (obj.creator ?? {}) as Json;
+      return {
+        id: `netease:${pid}`,
+        platform: 'netease',
+        platformId: pid,
+        type: 'playlist',
+        name: pickString(obj, 'name') || `歌单 ${pid}`,
+        coverUrl: normalizeCover(pickString(obj, 'coverImgUrl')),
+        trackCount: pickNumber(obj, 'trackCount'),
+        creator: pickString(creator, 'nickname') || undefined,
+        playCount: pickNumber(obj, 'playCount') || undefined,
+      };
+    });
+    return {
+      playlists,
+      total: pickNumber(result, 'playlistCount') || playlists.length,
+    };
+  },
+
+  async searchAlbums(keywords, { limit, offset }): Promise<AlbumSearchResult> {
+    const body = await api('/cloudsearch', { keywords, type: 10, limit, offset });
+    const result = (body.result ?? {}) as Json;
+    const list = asArray(result.albums);
+    const albums: AlbumCard[] = list.map((item) => {
+      const obj = item as Json;
+      const aid = String(pickNumber(obj, 'id') || pickString(obj, 'id'));
+      const artist = (obj.artist ?? {}) as Json;
+      const artists = asArray(obj.artists);
+      const artistName = pickString(artist, 'name') || artists.map((a) => pickString(a as Json, 'name')).filter(Boolean).join(' / ');
+      return {
+        id: `netease:album:${aid}`,
+        platform: 'netease',
+        platformId: aid,
+        type: 'album',
+        name: pickString(obj, 'name') || `专辑 ${aid}`,
+        coverUrl: normalizeCover(pickString(obj, 'picUrl')),
+        trackCount: pickNumber(obj, 'size') || undefined,
+        artist: artistName || undefined,
+        publishTime: pickNumber(obj, 'publishTime') ? new Date(pickNumber(obj, 'publishTime')).toLocaleDateString() : undefined,
+      };
+    });
+    return {
+      albums,
+      total: pickNumber(result, 'albumCount') || albums.length,
+    };
+  },
+
   async trackDetail(platformTrackId): Promise<Track | null> {
     const body = await api('/song/detail', { ids: platformTrackId });
     const first = asArray(body.songs)[0];
@@ -129,13 +194,89 @@ export const neteaseAdapter: Adapter = {
     const body = await api('/playlist/detail', { id: playlistId, n: 1000 });
     const playlist = body.playlist as Json | undefined;
     if (!playlist) throw err.upstreamShape('netease', 'playlist/detail 缺少 playlist 字段');
+    const creator = (playlist.creator ?? {}) as Json;
     return {
       id: `netease:${playlistId}`,
       platform: 'netease',
       name: pickString(playlist, 'name') || `歌单 ${playlistId}`,
       coverUrl: normalizeCover(pickString(playlist, 'coverImgUrl')),
+      description: pickString(playlist, 'description') || undefined,
+      creator: pickString(creator, 'nickname') || undefined,
       tracks: normalizeSongs(playlist.tracks),
     };
+  },
+
+  async album(albumId): Promise<PlaylistResult> {
+    const body = await api('/album', { id: albumId });
+    const album = (body.album ?? {}) as Json;
+    const artist = (album.artist ?? (asArray(album.artists)[0] ?? {})) as Json;
+    const artistName = pickString(artist, 'name');
+    const albumName = pickString(album, 'name') || `专辑 ${albumId}`;
+    return {
+      id: `netease:album:${albumId}`,
+      platform: 'netease',
+      name: artistName ? `${albumName} - ${artistName}` : albumName,
+      coverUrl: normalizeCover(pickString(album, 'picUrl', 'blurPicUrl')),
+      description: pickString(album, 'description') || undefined,
+      creator: artistName || undefined,
+      tracks: normalizeSongs(body.songs),
+      isAlbum: true,
+    };
+  },
+
+  async userLibrary(): Promise<UserPlatformLibrary> {
+    const cookie = getCookie('netease');
+    if (!cookie) {
+      return { configured: false, playlists: [] };
+    }
+    try {
+      const accountBody = await api('/user/account', {});
+      const account = (accountBody.account ?? {}) as Json;
+      const profile = (accountBody.profile ?? {}) as Json;
+      const uid = pickString(account, 'id') || pickString(profile, 'userId');
+      if (!uid) {
+        return { configured: true, playlists: [] };
+      }
+      const listBody = await api('/user/playlist', { uid, limit: 100, offset: 0 });
+      const rawPlaylists = asArray(listBody.playlist);
+      const playlists: PlaylistCard[] = [];
+      let favoritePlaylist: PlaylistCard | undefined;
+
+      for (let i = 0; i < rawPlaylists.length; i++) {
+        const item = rawPlaylists[i] as Json;
+        const pid = String(pickNumber(item, 'id') || pickString(item, 'id'));
+        const name = pickString(item, 'name');
+        const isFav = i === 0 || name.includes('喜欢的音乐');
+        const card: PlaylistCard = {
+          id: `netease:${pid}`,
+          platform: 'netease',
+          platformId: pid,
+          type: 'playlist',
+          name: name || `歌单 ${pid}`,
+          coverUrl: normalizeCover(pickString(item, 'coverImgUrl')),
+          trackCount: pickNumber(item, 'trackCount'),
+          playCount: pickNumber(item, 'playCount') || undefined,
+          isFavorite: isFav,
+        };
+        if (isFav && !favoritePlaylist) {
+          favoritePlaylist = card;
+        }
+        playlists.push(card);
+      }
+
+      return {
+        configured: true,
+        user: {
+          id: uid,
+          nickname: pickString(profile, 'nickname') || undefined,
+          avatarUrl: normalizeCover(pickString(profile, 'avatarUrl')),
+        },
+        favoritePlaylist,
+        playlists,
+      };
+    } catch {
+      return { configured: true, playlists: [] };
+    }
   },
 
   /**

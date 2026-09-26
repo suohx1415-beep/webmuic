@@ -35,5 +35,7 @@ export const STORAGE_KEYS = {
   settings: 'settings',
   queue: 'queue',
   favorites: 'favorites',
+  savedPlaylists: 'savedPlaylists',
   lastQuery: 'lastQuery',
 } as const;
+

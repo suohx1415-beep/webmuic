@@ -6,6 +6,7 @@ import type { PlaylistResponse } from '@/api/types';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
 import TrackList from '@/components/TrackList.vue';
+import { useFavoritesStore } from '@/stores/favorites';
 import { usePlayerStore } from '@/stores/player';
 
 const emit = defineEmits<{ notify: [message: string] }>();
@@ -13,6 +14,7 @@ const emit = defineEmits<{ notify: [message: string] }>();
 const route = useRoute();
 const router = useRouter();
 const player = usePlayerStore();
+const favorites = useFavoritesStore();
 
 const data = ref<PlaylistResponse | null>(null);
 const loading = ref(false);
@@ -53,6 +55,20 @@ function enqueueAll(): void {
   emit('notify', added > 0 ? `已追加 ${added} 首到队列` : '这些曲目已在队列中');
 }
 
+function toggleFavorite(): void {
+  if (!data.value) return;
+  const isSaved = favorites.togglePlaylist({
+    id: data.value.id,
+    platform: data.value.platform,
+    name: data.value.name,
+    coverUrl: data.value.coverUrl,
+    creator: data.value.creator,
+    trackCount: data.value.tracks.length,
+    type: data.value.isAlbum ? 'album' : 'playlist',
+  });
+  emit('notify', isSaved ? `已收藏${data.value.isAlbum ? '专辑' : '歌单'}《${data.value.name}》` : `已取消收藏《${data.value.name}》`);
+}
+
 function openManual(): void {
   const id = manualId.value.trim();
   if (!id) return;
@@ -75,9 +91,9 @@ onMounted(() => {
 
 <template>
   <div class="page-header">
-    <h1 class="page-title">歌单详情</h1>
+    <h1 class="page-title">歌单与专辑详情</h1>
     <p class="page-sub">
-      支持直接加载网易云（<code>netease:id</code>）与 QQ 音乐（<code>qq:id</code>）公开歌单。
+      支持直接加载网易云（<code>netease:id</code> / <code>netease:album:id</code>）与 QQ 音乐（<code>qq:id</code> / <code>qq:album:mid</code>）公开歌单与专辑。
     </p>
   </div>
 
@@ -88,12 +104,12 @@ onMounted(() => {
         <Icon name="music" size="16" class="field-icon" />
         <input
           v-model="manualId"
-          placeholder="输入歌单识别码，如 netease:3778678 或 qq:7614366897"
+          placeholder="输入歌单/专辑识别码，如 netease:3778678 或 qq:7614366897 或 qq:album:000I5jJB3blWeN"
           class="manual-input"
         />
       </div>
       <button type="submit" class="open-btn" :disabled="!manualId.trim() || loading">
-        打开歌单
+        打开解析
       </button>
     </form>
   </div>
@@ -101,7 +117,7 @@ onMounted(() => {
   <!-- 加载状态 -->
   <div v-if="loading" class="notice ok">
     <Icon name="refresh" size="16" class="spin-icon" />
-    <span>正在加载歌单曲目...</span>
+    <span>正在加载曲目...</span>
   </div>
   <div v-else-if="error" class="notice error">
     <Icon name="close" size="16" />
@@ -114,13 +130,17 @@ onMounted(() => {
       <img
         v-if="data.coverUrl"
         :src="data.coverUrl"
-        alt="歌单封面"
+        :alt="data.name"
         class="playlist-cover"
       />
+      <div v-else class="playlist-cover-placeholder">
+        <Icon :name="data.isAlbum ? 'album' : 'queue'" size="44" />
+      </div>
       <div class="playlist-meta-info">
         <div class="row" style="gap: 8px; margin-bottom: 6px">
           <PlatformBadge :platform="data.platform" />
-          <span class="playlist-tag">官方歌单</span>
+          <span class="playlist-tag">{{ data.isAlbum ? '专辑' : '歌单' }}</span>
+          <span v-if="data.creator" class="creator-name-tag">{{ data.creator }}</span>
         </div>
         <h2 class="playlist-title">{{ data.name }}</h2>
         <div class="playlist-stats">
@@ -136,6 +156,14 @@ onMounted(() => {
           <button class="hero-action-btn" @click="enqueueAll">
             <Icon name="plus" size="15" />
             <span>追加至队列</span>
+          </button>
+          <button
+            class="hero-action-btn"
+            :class="{ favorited: favorites.hasPlaylist(data.id) }"
+            @click="toggleFavorite"
+          >
+            <Icon name="heart" size="15" />
+            <span>{{ favorites.hasPlaylist(data.id) ? '已收藏' : '收藏' }}</span>
           </button>
         </div>
       </div>

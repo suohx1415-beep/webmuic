@@ -129,4 +129,24 @@ describe('网关 HTTP 契约', () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-headers')).toContain('Range');
   });
+
+  it('GET /api/user/playlists 在匿名状态下返回两平台空歌单与未配置标记', async () => {
+    const res = await fetch(`${origin}/api/user/playlists`);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.netease).toBeDefined();
+    expect(body.qq).toBeDefined();
+    expect(body.netease.configured).toBe(false);
+    expect(body.qq.configured).toBe(false);
+    expect(Array.isArray(body.netease.playlists)).toBe(true);
+    expect(Array.isArray(body.qq.playlists)).toBe(true);
+  });
+
+  it('GET /api/album/:id 校验非法专辑 id 格式返回 400', async () => {
+    const res = await fetch(`${origin}/api/album/invalid-album-id`);
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
 });
+

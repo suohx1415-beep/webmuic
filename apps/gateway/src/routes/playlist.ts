@@ -5,24 +5,51 @@ import { asyncHandler, queryInt, queryString } from '../http.js';
 import { parseTrackId, type DegradedInfo, type Platform, type PlaylistResult } from '../types.js';
 
 export const playlistRouter = Router();
+export const albumRouter = Router();
 export const recommendRouter = Router();
 
-function requirePlaylistId(raw: string): { platform: Platform; id: string } {
-  const parsed = parseTrackId(raw);
-  if (!parsed) throw err.badRequest(`歌单 id 格式应为 平台:歌单id，收到：${raw}`);
-  return { platform: parsed.platform, id: parsed.platformTrackId };
+function requirePlaylistId(raw: string): { platform: Platform; id: string; isAlbum: boolean } {
+  const i = raw.indexOf(':');
+  if (i <= 0) throw err.badRequest(`歌单/专辑 id 格式应为 平台:id，收到：${raw}`);
+  const platform = raw.slice(0, i) as Platform;
+  if (platform !== 'netease' && platform !== 'qq') {
+    throw err.badRequest(`不支持的平台：${platform}`);
+  }
+  let rest = raw.slice(i + 1);
+  let isAlbum = false;
+  if (rest.startsWith('album:')) {
+    isAlbum = true;
+    rest = rest.slice('album:'.length);
+  }
+  if (!rest) throw err.badRequest(`缺少有效 id：${raw}`);
+  return { platform, id: rest, isAlbum };
 }
 
 /**
- * GET /api/playlist/:id   形如 /api/playlist/netease:3778678
- * 网易云：任意公开歌单；QQ：公开歌单（部分歌单对匿名身份不可见，会返回 404 与原因）
+ * GET /api/playlist/:id   形如 /api/playlist/netease:3778678 或 /api/playlist/qq:album:000I5jJB3blWeN
+ * 网易云与 QQ：支持公开歌单与专辑解析
  */
 playlistRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { platform, id } = requirePlaylistId(req.params.id ?? '');
-    const playlist: PlaylistResult = await adapterOf(platform).playlist(id);
-    res.json(playlist);
+    const { platform, id, isAlbum } = requirePlaylistId(req.params.id ?? '');
+    const adapter = adapterOf(platform);
+    const result: PlaylistResult = isAlbum ? await adapter.album(id) : await adapter.playlist(id);
+    res.json(result);
+  }),
+);
+
+/**
+ * GET /api/album/:id   形如 /api/album/netease:12345 或 /api/album/qq:000I5jJB3blWeN
+ */
+albumRouter.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const raw = req.params.id ?? '';
+    const parsed = parseTrackId(raw);
+    if (!parsed) throw err.badRequest(`专辑 id 格式应为 平台:专辑id，收到：${raw}`);
+    const result = await adapterOf(parsed.platform).album(parsed.platformTrackId);
+    res.json(result);
   }),
 );
 

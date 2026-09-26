@@ -68,6 +68,7 @@
 | 参数 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `q` | 是 | — | 关键词 |
+| `type` | 否 | `song` | 搜索类型：`song`（单曲） / `playlist`（歌单） / `album`（专辑） |
 | `platform` | 否 | `all` | `all` / `netease` / `qq` |
 | `limit` | 否 | 20 | 每平台条数，1–50 |
 | `offset` | 否 | 0 | 偏移（QQ 会换算成页码） |
@@ -75,6 +76,7 @@
 ```json
 {
   "query": "晴天",
+  "type": "song",
   "offset": 0,
   "limit": 20,
   "counts": { "netease": 20, "qq": 20 },
@@ -84,7 +86,8 @@
 }
 ```
 
-- `tracks` 按 `netease[0], qq[0], netease[1], qq[1] …` 交替排列，便于同时看到两个来源。
+- 当 `type=playlist` 时返回 `playlists: PlaylistCard[]`；
+- 当 `type=album` 时返回 `albums: AlbumCard[]`；
 - 只有一个平台可用时仍返回 200，失败方出现在 `degraded`。
 - 两个平台都失败时返回对应的上游错误（502）。
 
@@ -133,9 +136,10 @@
 - 上游（平台 CDN）返回 403/404 时，会丢弃缓存重新解析地址并重试一次；仍失败返回 410。
 - 音频请求不经本地限速队列（顺序读取量大），只受 30s 超时约束。
 
-### `GET /api/playlist/:id`
+### `GET /api/playlist/:id` 与 `GET /api/album/:id`
 
-`id` 形如 `netease:3778678` 或 `qq:7614366897`。
+- `GET /api/playlist/:id`：`id` 形如 `netease:3778678`、`qq:7614366897` 或带专辑前缀 `qq:album:000I5jJB3blWeN`。
+- `GET /api/album/:id`：`id` 形如 `netease:12345` 或 `qq:000I5jJB3blWeN`。
 
 ```json
 {
@@ -143,11 +147,35 @@
   "platform": "netease",
   "name": "热歌榜",
   "coverUrl": "https://p1.music.126.net/…",
-  "tracks": [ /* Track[] */ ]
+  "description": "歌单介绍",
+  "creator": "创建者/艺人",
+  "tracks": [ /* Track[] */ ],
+  "isAlbum": false
 }
 ```
 
 QQ 部分歌单对匿名身份不可见，会返回 404，message 里带上游原因（如 `check privacy error!`）。
+
+### `GET /api/user/playlists`
+
+获取当前网易云与 QQ 音乐登录账号中的云端歌单与"我喜欢的音乐 / 红心歌单"。
+
+```json
+{
+  "netease": {
+    "configured": true,
+    "user": { "id": "123456", "nickname": "昵称", "avatarUrl": "..." },
+    "favoritePlaylist": { "id": "netease:3778678", "name": "我喜欢的音乐", "trackCount": 99, "isFavorite": true },
+    "playlists": [ /* PlaylistCard[] */ ]
+  },
+  "qq": {
+    "configured": true,
+    "user": { "uin": "1152921505382254607" },
+    "favoritePlaylist": { "id": "qq:9777500966", "name": "我喜欢", "trackCount": 94, "isFavorite": true },
+    "playlists": [ /* PlaylistCard[] */ ]
+  }
+}
+```
 
 ### `GET /api/recommend/daily?limit=30&platform=all`
 

@@ -1055,15 +1055,21 @@ input[type='range'] {
   color: var(--text-tertiary);
   font-size: 15px;
   line-height: 1.6;
-  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 6px 12px;
+  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
   max-width: 90%;
-  cursor: default;
+  cursor: pointer;
+  user-select: none;
 }
 
 .lyric-line:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lyric-line:active {
+  transform: scale(0.98);
 }
 
 .lyric-line.active {
@@ -1072,6 +1078,7 @@ input[type='range'] {
   font-weight: 700;
   text-shadow: 0 0 20px rgba(255, 51, 88, 0.4);
   transform: scale(1.04);
+  background: transparent;
 }
 
 .lyric-line .trans {

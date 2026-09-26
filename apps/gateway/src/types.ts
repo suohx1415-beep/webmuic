@@ -33,8 +33,51 @@ export interface PlaylistResult {
   platform: Platform;
   name: string;
   coverUrl?: string;
+  description?: string;
+  creator?: string;
   tracks: Track[];
+  isAlbum?: boolean;
 }
+
+export type SearchType = 'song' | 'playlist' | 'album';
+
+export interface PlaylistCard {
+  id: string;
+  platform: Platform;
+  platformId: string;
+  type: 'playlist';
+  name: string;
+  coverUrl?: string;
+  trackCount?: number;
+  creator?: string;
+  playCount?: number;
+  isFavorite?: boolean;
+}
+
+export interface AlbumCard {
+  id: string;
+  platform: Platform;
+  platformId: string;
+  type: 'album';
+  name: string;
+  coverUrl?: string;
+  trackCount?: number;
+  artist?: string;
+  publishTime?: string;
+}
+
+export interface UserPlatformLibrary {
+  configured: boolean;
+  user?: { id?: string; uin?: string; nickname?: string; avatarUrl?: string };
+  favoritePlaylist?: PlaylistCard;
+  playlists: PlaylistCard[];
+}
+
+export interface UserLibraryResult {
+  netease: UserPlatformLibrary;
+  qq: UserPlatformLibrary;
+}
+
 
 export interface DegradedInfo {
   /** 本轮降级/失败的平台 */
