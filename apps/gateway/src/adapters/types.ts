@@ -1,5 +1,6 @@
 import type {
   AlbumCard,
+  ChorusInfo,
   LyricResult,
   Platform,
   PlaylistCard,
@@ -49,6 +50,7 @@ export interface Adapter {
   searchPlaylists(keywords: string, opts: { limit: number; offset: number }): Promise<PlaylistSearchResult>;
   searchAlbums(keywords: string, opts: { limit: number; offset: number }): Promise<AlbumSearchResult>;
   trackDetail(platformTrackId: string): Promise<Track | null>;
+  chorus(platformTrackId: string): Promise<ChorusInfo | null>;
   lyric(platformTrackId: string): Promise<LyricResult>;
   playlist(playlistId: string): Promise<PlaylistResult>;
   album(albumId: string): Promise<PlaylistResult>;

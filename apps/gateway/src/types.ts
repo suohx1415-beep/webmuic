@@ -11,6 +11,11 @@ export interface Quality {
   size?: number;
 }
 
+export interface ChorusInfo {
+  startTimeMs: number;
+  endTimeMs?: number;
+}
+
 export interface Track {
   /** `${platform}:${platformTrackId}` */
   id: string;
@@ -21,6 +26,7 @@ export interface Track {
   album: { id?: string; name: string; coverUrl?: string };
   durationMs: number;
   qualities: Quality[];
+  chorus?: ChorusInfo;
 }
 
 export interface LyricResult {

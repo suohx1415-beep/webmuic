@@ -11,6 +11,11 @@ export interface Quality {
   size?: number;
 }
 
+export interface ChorusInfo {
+  startTimeMs: number;
+  endTimeMs?: number;
+}
+
 export interface Track {
   id: string;
   platform: Platform;
@@ -20,6 +25,7 @@ export interface Track {
   album: { id?: string; name: string; coverUrl?: string };
   durationMs: number;
   qualities: Quality[];
+  chorus?: ChorusInfo;
 }
 
 export interface DegradedInfo {
@@ -47,6 +53,12 @@ export interface UrlResponse {
   size: number | null;
   br: number | null;
   expiresAt: number;
+  chorus?: ChorusInfo | null;
+}
+
+export interface ChorusResponse {
+  trackId: string;
+  chorus: ChorusInfo | null;
 }
 
 export interface LyricResponse {

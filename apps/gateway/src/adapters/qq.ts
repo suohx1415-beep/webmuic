@@ -3,6 +3,7 @@ import { err } from '../errors.js';
 import { upstreamJson } from '../upstream.js';
 import type {
   AlbumCard,
+  ChorusInfo,
   LyricResult,
   PlaylistCard,
   PlaylistResult,
@@ -84,6 +85,21 @@ function emptyEnvelope(body: unknown, where: string): ApiEnvelope {
   return envelope;
 }
 
+function extractChorus(obj: Json): ChorusInfo | undefined {
+  const vi = asArray(obj.vi);
+  const rawStart = vi[4];
+  const rawEnd = vi[5];
+  const start = typeof rawStart === 'number' ? rawStart : Number(rawStart) || 0;
+  const end = typeof rawEnd === 'number' ? rawEnd : Number(rawEnd) || 0;
+  if (start > 0) {
+    return {
+      startTimeMs: start,
+      endTimeMs: end > 0 ? end : undefined,
+    };
+  }
+  return undefined;
+}
+
 /**
  * 搜索态的曲目结构：平铺字段 + size128/size320/sizeflac。
  */
@@ -113,6 +129,7 @@ function normalizeSearchSong(song: Json): Track | null {
     // interval 以秒为单位
     durationMs: pickNumber(song, 'interval') * 1000,
     qualities: dedupeQualities(quality),
+    chorus: extractChorus(song),
   };
 }
 
@@ -151,6 +168,7 @@ function normalizeTrackInfo(info: Json): Track | null {
     },
     durationMs: pickNumber(info, 'interval') * 1000,
     qualities: dedupeQualities(quality),
+    chorus: extractChorus(info),
   };
 }
 
@@ -337,6 +355,17 @@ export const qqAdapter: Adapter = {
     const trackInfo = (info?.track_info ?? {}) as Json;
     const track = normalizeTrackInfo(trackInfo);
     return track?.title === '未知曲目' ? null : track;
+  },
+
+  async chorus(platformTrackId): Promise<ChorusInfo | null> {
+    try {
+      const body = emptyEnvelope(await api('/getSongInfo', { songmid: platformTrackId }), 'getSongInfo');
+      const info = (body.response?.songinfo as Json | undefined)?.data as Json | undefined;
+      const trackInfo = (info?.track_info ?? {}) as Json;
+      return extractChorus(trackInfo) ?? null;
+    } catch {
+      return null;
+    }
   },
 
   async lyric(platformTrackId): Promise<LyricResult> {

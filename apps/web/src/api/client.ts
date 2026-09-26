@@ -93,6 +93,9 @@ export const api = {
   trackUrl: (id: string, quality: QualityLevel) =>
     request<UrlResponse>(`/api/track/${encodeURIComponent(id)}/url${query({ quality })}`),
 
+  chorus: (id: string) =>
+    request<import('./types').ChorusResponse>(`/api/track/${encodeURIComponent(id)}/chorus`),
+
   lyric: (id: string) => request<LyricResponse>(`/api/track/${encodeURIComponent(id)}/lyric`),
 
   playlist: (id: string) => request<PlaylistResponse>(`/api/playlist/${encodeURIComponent(id)}`),

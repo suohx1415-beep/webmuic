@@ -148,5 +148,12 @@ describe('网关 HTTP 契约', () => {
     const body = await json(res);
     expect(body.error.code).toBe('BAD_REQUEST');
   });
+
+  it('GET /api/track/:id/chorus 校验非法曲目 id 格式返回 400', async () => {
+    const res = await fetch(`${origin}/api/track/invalid-id/chorus`);
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(body.error.code).toBe('BAD_REQUEST');
+  });
 });
 

@@ -54,6 +54,7 @@ const QQ_TRACK_INFO = {
           singer: [{ id: 2154829, mid: '0047E3Vr2WNsYe', name: '郑浩' }],
           album: { id: 88258800, mid: '002PmUzc12N5S7', name: '琵琶曲' },
           file: { size_128mp3: 3776877, size_320mp3: 9441896, size_flac: 51150165, size_hires: 0 },
+          vi: [2317, 223, 223, 3358603, 84346, 114346, 1, 0, 0],
         },
       },
     },
@@ -142,6 +143,7 @@ describe('QQ 适配器', () => {
     expect(track?.album.name).toBe('琵琶曲');
     expect(track?.durationMs).toBe(235000);
     expect(track?.qualities.map((q) => q.level)).toEqual(['standard', 'high', 'lossless']);
+    expect(track?.chorus).toEqual({ startTimeMs: 84346, endTimeMs: 114346 });
   });
 
   it('歌曲不存在（track_info 为空）返回 null 而不是伪造曲目', async () => {
@@ -240,6 +242,31 @@ describe('网易云适配器', () => {
     const cookie = new URL(calls[0]?.url ?? '').searchParams.get('cookie');
     expect(cookie).toBe('MUSIC_U=testvalue; os=pc');
     setCredential('netease', '');
+  });
+
+  it('trackDetail 并发获取 chorus 并正确填充', async () => {
+    handler = (url) => {
+      if (url.includes('/song/detail')) {
+        return jsonResponse({
+          songs: [{ id: 186016, name: '晴天', dt: 269000, ar: [{ id: 1, name: '周杰伦' }], al: { id: 1, name: '叶惠美' } }],
+        });
+      }
+      if (url.includes('/song/chorus')) {
+        return jsonResponse({
+          chorus: [{ id: 186016, startTime: 84498, endTime: 142301 }],
+        });
+      }
+      return jsonResponse({});
+    };
+    const track = await neteaseAdapter.trackDetail('186016');
+    expect(track?.title).toBe('晴天');
+    expect(track?.chorus).toEqual({ startTimeMs: 84498, endTimeMs: 142301 });
+  });
+
+  it('chorus 接口能独立获取副歌定位', async () => {
+    handler = () => jsonResponse({ chorus: [{ id: 186016, startTime: 84498, endTime: 142301 }] });
+    const chorus = await neteaseAdapter.chorus('186016');
+    expect(chorus).toEqual({ startTimeMs: 84498, endTimeMs: 142301 });
   });
 });
 

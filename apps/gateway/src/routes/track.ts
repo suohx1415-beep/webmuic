@@ -45,7 +45,10 @@ trackRouter.get(
   asyncHandler(async (req, res) => {
     const { platform, platformTrackId } = requireTrackId(req.params.id ?? '');
     const requested = parseQuality(queryString(req, 'quality'));
-    const resolved = await resolveUpstream(platform, platformTrackId, requested);
+    const [resolved, chorus] = await Promise.all([
+      resolveUpstream(platform, platformTrackId, requested),
+      adapterOf(platform).chorus(platformTrackId).catch(() => null),
+    ]);
 
     const rank = (q: QualityLevel) => ['standard', 'high', 'lossless', 'hires'].indexOf(q);
     const degraded = rank(resolved.quality) < rank(requested);
@@ -69,7 +72,18 @@ trackRouter.get(
       size: resolved.size ?? null,
       br: resolved.br ?? null,
       expiresAt: resolved.expiresAt,
+      chorus: chorus ?? null,
     });
+  }),
+);
+
+/** GET /api/track/:id/chorus —— 获取副歌/高潮起始点 */
+trackRouter.get(
+  '/:id/chorus',
+  asyncHandler(async (req, res) => {
+    const { platform, platformTrackId } = requireTrackId(req.params.id ?? '');
+    const chorus = await adapterOf(platform).chorus(platformTrackId);
+    res.json({ trackId: `${platform}:${platformTrackId}`, chorus });
   }),
 );
 

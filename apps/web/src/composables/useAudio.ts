@@ -80,6 +80,9 @@ export function useAudio() {
       const info = await api.trackUrl(track.id, settings.quality);
       if (token !== currentLoadToken || player.current?.id !== track.id) return;
       player.resolved = info;
+      if (info.chorus && player.current) {
+        player.current.chorus = info.chorus;
+      }
       // 网关返回的是相对路径（/api/stream/...），这里保持同源
       player.streamUrl = info.url;
       if (info.degraded) {

@@ -3,6 +3,7 @@ import { err } from '../errors.js';
 import { upstreamJson } from '../upstream.js';
 import type {
   AlbumCard,
+  ChorusInfo,
   LyricResult,
   Platform,
   PlaylistCard,
@@ -176,10 +177,32 @@ export const neteaseAdapter: Adapter = {
     };
   },
 
+  async chorus(platformTrackId): Promise<ChorusInfo | null> {
+    try {
+      const body = await api('/song/chorus', { id: platformTrackId });
+      const list = asArray(body.chorus);
+      const first = list[0] as Json | undefined;
+      if (!first) return null;
+      const start = pickNumber(first, 'startTime');
+      const end = pickNumber(first, 'endTime');
+      return start > 0 ? { startTimeMs: start, endTimeMs: end > 0 ? end : undefined } : null;
+    } catch {
+      return null;
+    }
+  },
+
   async trackDetail(platformTrackId): Promise<Track | null> {
-    const body = await api('/song/detail', { ids: platformTrackId });
-    const first = asArray(body.songs)[0];
-    return first ? normalizeSong(first as Json) : null;
+    const [detailBody, chorusInfo] = await Promise.all([
+      api('/song/detail', { ids: platformTrackId }),
+      this.chorus(platformTrackId).catch(() => null),
+    ]);
+    const first = asArray(detailBody.songs)[0];
+    if (!first) return null;
+    const track = normalizeSong(first as Json);
+    if (track && chorusInfo) {
+      track.chorus = chorusInfo;
+    }
+    return track;
   },
 
   async lyric(platformTrackId): Promise<LyricResult> {
