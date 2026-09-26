@@ -97,11 +97,12 @@ cd apps/web && ../../.tools/node20/bin/node node_modules/vite/bin/vite.js
 
 实现要点：上游把 cookie 放在 `/login/qr/check` 的**响应体** `cookie` 字段里（不是 `Set-Cookie`），网关在服务端接住并落盘；未确认时的临时 cookie（`NMTID` 等）会被丢弃。
 
-### QQ（手填 cookie）
+### QQ（扫码登录与手填备用）
 
-前端「设置」页 →「QQ 音乐凭证」→ 粘贴 `y.qq.com` 的完整 cookie（建议含 `qm_keyst` 与 `uin`）→ 保存。
+前端「设置」页 →「QQ 音乐扫码登录」→ 支持手机 QQ 扫码与微信 App 扫码双通道登录。
 
-- cookie 只经一次 POST 到达网关，随后立即从页面内存清除，不写 localStorage。
+- 扫码成功后由本地网关自动在服务端提取会话 Cookie 并安全落盘，前端不接触明文。
+- 同时保留「手动填入 Cookie (备用)」面板，可手动贴入 `y.qq.com` 开发者工具中的 Cookie。
 - 网关写到 `apps/gateway/.qq-cookie.txt`，QQ 后端热读取，**不用重启**。
 
 ### 也可以直接改文件
@@ -160,7 +161,7 @@ node scripts/smoke.mjs
 - **QQ CDN 实测不强制 Referer**，与最初预期不同；代理仍然保留（隐藏 CDN 地址、统一错误处理）。
 - **QQ 没有匿名的「每日推荐」**，「发现」页里它的分组是公开热歌歌单，界面上如实标注了来源。
 - **网易云无损 / Hi-Res 需要会员**，匿名请求会被降到 320k（网关会回报实际档位）。
-- **`USER/setCookie` 在 QQ 上游被禁用（固定 403）**，所以 QQ 只有手填 cookie 一条路，不做扫码登录。
+- **QQ 登录通过 ptqrlogin / wx_qrconnect 实现**，凭证经网关本地持久化，无需修改上游只读代码。
 - **不做** `.mflac`/`.mgg` 解密、不接入 UnblockNeteaseMusic、不做服务端持久化、不做 Electron 打包/Docker 生产镜像。
 - 限速是**本地**的（网易云 3 req/s、QQ 2 req/s，带排队），只能减少触发风控的概率，不能保证平台不风控。
 
@@ -171,7 +172,7 @@ apps/gateway/           网关（Express + TS）
   src/adapters/         两个平台的适配器（归一化 + 播放地址解析）
   src/routes/           HTTP 路由
   src/{cache,limiter,credentials,upstream,resolver,errors,http}.ts
-  test/                 53 项单测（vitest）
+  test/                 66 项单测（vitest）
   .env.local            凭证（600，ignored）
   .qq-cookie.txt        QQ 后端热读取文件（ignored）
 apps/web/               前端（Vue 3 + Vite + Pinia）

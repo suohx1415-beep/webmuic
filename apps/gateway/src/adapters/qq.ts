@@ -159,7 +159,7 @@ function songListOf(envelope: ApiEnvelope): unknown[] {
 }
 
 /** 歌单候选：部分歌单对匿名身份会返回 check privacy error，需要往后找 */
-async function pickPublicPlaylist(): Promise<{ dissid: string; name: string }> {
+async function pickPublicPlaylist(): Promise<{ dissid: string; name: string; detail: ApiEnvelope }> {
   const body = emptyEnvelope(
     await api('/getSongLists', { page: 1, limit: 5, categoryId: 10000000, sortId: 5 }),
     'getSongLists',
@@ -177,7 +177,7 @@ async function pickPublicPlaylist(): Promise<{ dissid: string; name: string }> {
       await api('/getSongListDetail', { disstid: candidate.dissid }),
       'getSongListDetail',
     );
-    if (asArray(detail.response?.cdlist).length > 0) return candidate;
+    if (asArray(detail.response?.cdlist).length > 0) return { ...candidate, detail };
   }
   throw err.upstreamShape('qq', '没有可匿名访问的公开歌单');
 }
@@ -273,8 +273,7 @@ export const qqAdapter: Adapter = {
   async dailyRecommend(limit): Promise<DailyRecommendResult> {
     // QQ 没有匿名的"每日推荐"接口，退化为公开热歌歌单，来源在界面上如实标注
     const playlist = await pickPublicPlaylist();
-    const body = emptyEnvelope(await api('/getSongListDetail', { disstid: playlist.dissid }), 'getSongListDetail');
-    const cd = asArray(body.response?.cdlist)[0] as Json | undefined;
+    const cd = asArray(playlist.detail.response?.cdlist)[0] as Json | undefined;
     const tracks = compact(asArray(cd?.songlist).map((item) => normalizeTrackInfo(item as Json)));
     return {
       tracks: tracks.slice(0, limit),

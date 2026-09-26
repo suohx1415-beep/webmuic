@@ -163,18 +163,24 @@ console.log(results.map((r) => `  ${r}`).join('\n'));
 
 // 完成标记：scripts/dev-all.mjs 用它判断 QQ 后端是否已具备 cookie 转发与可用搜索
 const unmatched = results.filter((r) => r.startsWith('⚠'));
+const markerFile = path.join(QQ, '.webmuic-patched');
+
+if (unmatched.length > 0) {
+  try {
+    if (fs.existsSync(markerFile)) fs.unlinkSync(markerFile);
+  } catch {}
+  console.error('\n⚠ 有补丁未匹配，上游代码可能已更新，请人工核对后再启动。');
+  process.exit(1);
+}
+
 fs.writeFileSync(
-  path.join(QQ, '.webmuic-patched'),
+  markerFile,
   [
     `patchedAt=${new Date().toISOString()}`,
     'patches=P1,P2,P3,P4,P5,P6',
-    `unmatched=${unmatched.length}`,
+    'unmatched=0',
     '',
   ].join('\n'),
 );
 
-if (unmatched.length > 0) {
-  console.log('\n⚠ 有补丁未匹配，上游代码可能已更新，请人工核对后再启动。');
-} else {
-  console.log('\n补丁处理完成。');
-}
+console.log('\n补丁处理完成。');

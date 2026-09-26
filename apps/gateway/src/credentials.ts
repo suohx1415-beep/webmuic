@@ -62,6 +62,11 @@ export function syncQqCookieFile(): void {
       : null;
     if (current === cookie) return;
     fs.writeFileSync(paths.qqCookieFile, cookie, { mode: 0o600 });
+    try {
+      fs.chmodSync(paths.qqCookieFile, 0o600);
+    } catch {
+      /* 忽略 */
+    }
   } catch {
     /* 写不进去时 QQ 侧退化为匿名请求，不影响其它功能 */
   }
@@ -122,9 +127,10 @@ export function qqUin(cookie: string): string {
 export function initCredentials(): void {
   readEnvFile();
   syncQqCookieFile();
-  // 已有凭证时顺手把 .env.local 的权限收紧，避免历史文件权限过宽
+  // 已有凭证时顺手把 .env.local 和 .qq-cookie.txt 的权限收紧，避免历史文件权限过宽
   try {
     if (fs.existsSync(paths.envFile)) fs.chmodSync(paths.envFile, 0o600);
+    if (fs.existsSync(paths.qqCookieFile)) fs.chmodSync(paths.qqCookieFile, 0o600);
   } catch {
     /* 忽略 */
   }

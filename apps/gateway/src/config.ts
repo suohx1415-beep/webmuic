@@ -26,7 +26,6 @@ export const limits = {
   qq: { ratePerSec: 2, burst: 4, queueMax: 50 },
   /** 播放地址缓存：与平台凭证有效期取较小值，这里统一按 30 分钟封顶 */
   urlTtlMs: 30 * 60 * 1000,
-  metaTtlMs: 10 * 60 * 1000,
   /** 疑似风控后的冷却时长 */
   cooldownMs: 3 * 60 * 1000,
   upstreamTimeoutMs: 20_000,

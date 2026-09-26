@@ -94,6 +94,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function logoutQq(): Promise<void> {
+    try {
+      await api.logoutQq();
+      notice.value = '已退出 QQ 音乐登录，回到匿名状态';
+      await refresh();
+    } catch (e) {
+      error.value = e instanceof ApiError ? e.message : '退出失败';
+    }
+  }
+
   return {
     statuses,
     health,
@@ -108,5 +118,6 @@ export const useAuthStore = defineStore('auth', () => {
     submitQqCookie,
     clearQqCookie,
     logoutNetease,
+    logoutQq,
   };
 });

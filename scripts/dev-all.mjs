@@ -66,7 +66,7 @@ const services = [
       ],
       'tsx CLI',
     ),
-    args: (entry) => [entry, path.join(root, 'apps', 'gateway', 'src', 'server.ts')],
+    args: (entry) => [entry, 'watch', path.join(root, 'apps', 'gateway', 'src', 'server.ts')],
     env: { GATEWAY_HOST: '127.0.0.1', GATEWAY_PORT: '8787' },
     hint: '在仓库根目录执行 pnpm install',
   },
@@ -102,14 +102,27 @@ function isPortInUse(port) {
   });
 }
 
-function waitForPort(port, timeoutMs) {
+function waitForPort(port, timeoutMs, child) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
+    let timer;
+    const onExit = (code, signal) => {
+      clearTimeout(timer);
+      reject(new Error(`子进程在端口 ${port} 就绪前提前退出（code=${code}, signal=${signal}）`));
+    };
+    if (child) child.once('exit', onExit);
+
     const attempt = () => {
       isPortInUse(port).then((used) => {
-        if (used) resolve();
-        else if (Date.now() > deadline) reject(new Error(`端口 ${port} 在 ${timeoutMs}ms 内没有就绪`));
-        else setTimeout(attempt, 300);
+        if (used) {
+          if (child) child.removeListener('exit', onExit);
+          resolve();
+        } else if (Date.now() > deadline) {
+          if (child) child.removeListener('exit', onExit);
+          reject(new Error(`端口 ${port} 在 ${timeoutMs}ms 内没有就绪`));
+        } else {
+          timer = setTimeout(attempt, 300);
+        }
       });
     };
     attempt();
@@ -130,6 +143,7 @@ function startService(service) {
     cwd: service.cwd,
     env: { ...process.env, ...service.env },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: process.platform !== 'win32',
   });
   children.push({ service, child });
 
@@ -143,6 +157,7 @@ function startService(service) {
     if (!shuttingDown) {
       console.error(`\n[dev] ${service.name} 意外退出（code=${code} signal=${signal}）`);
       console.error(`[dev] 日志：${logFile}`);
+      void shutdown(1);
     }
   });
   return child;
@@ -155,11 +170,23 @@ async function shutdown(reasonCode = 0) {
   shuttingDown = true;
   console.log('\n[dev] 正在停止所有进程…');
   for (const { child } of children) {
-    if (!child.killed) child.kill('SIGTERM');
+    try {
+      if (process.platform !== 'win32' && child.pid) {
+        process.kill(-child.pid, 'SIGTERM');
+      } else if (!child.killed) {
+        child.kill('SIGTERM');
+      }
+    } catch {}
   }
   await new Promise((resolve) => setTimeout(resolve, 1200));
   for (const { child } of children) {
-    if (!child.killed && child.exitCode === null) child.kill('SIGKILL');
+    try {
+      if (process.platform !== 'win32' && child.pid) {
+        process.kill(-child.pid, 'SIGKILL');
+      } else if (!child.killed && child.exitCode === null) {
+        child.kill('SIGKILL');
+      }
+    } catch {}
   }
   for (const stream of logStreams.values()) stream.end();
   process.exit(reasonCode);
@@ -190,8 +217,8 @@ async function main() {
 
   for (const service of services) {
     try {
-      startService(service);
-      await waitForPort(service.port, 60_000);
+      const child = startService(service);
+      await waitForPort(service.port, 60_000, child);
       console.log(`[dev] ${service.name.padEnd(8)} 就绪  http://127.0.0.1:${service.port}`);
     } catch (error) {
       console.error(`\n[dev] 启动 ${service.name} 失败：${error.message}`);

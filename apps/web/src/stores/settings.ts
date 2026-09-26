@@ -5,6 +5,8 @@ import { load, save, STORAGE_KEYS } from '@/storage';
 
 export type PlatformFilter = 'all' | Platform;
 
+export type ThemeMode = 'dark' | 'light';
+
 interface PersistedSettings {
   quality: QualityLevel;
   platform: PlatformFilter;
@@ -12,6 +14,7 @@ interface PersistedSettings {
   volume: number;
   muted: boolean;
   showTranslation: boolean;
+  theme: ThemeMode;
 }
 
 const DEFAULTS: PersistedSettings = {
@@ -21,6 +24,7 @@ const DEFAULTS: PersistedSettings = {
   volume: 0.8,
   muted: false,
   showTranslation: true,
+  theme: 'dark',
 };
 
 export const QUALITY_OPTIONS: { value: QualityLevel; label: string; hint: string }[] = [
@@ -40,6 +44,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const volume = ref(initial.volume);
   const muted = ref(initial.muted);
   const showTranslation = ref(initial.showTranslation);
+  const theme = ref<ThemeMode>(initial.theme ?? 'dark');
 
   const snapshot = computed<PersistedSettings>(() => ({
     quality: quality.value,
@@ -48,6 +53,7 @@ export const useSettingsStore = defineStore('settings', () => {
     volume: volume.value,
     muted: muted.value,
     showTranslation: showTranslation.value,
+    theme: theme.value,
   }));
 
   watch(
@@ -56,6 +62,18 @@ export const useSettingsStore = defineStore('settings', () => {
     { deep: true },
   );
 
+  watch(
+    theme,
+    (val) => {
+      document.documentElement.setAttribute('data-theme', val);
+    },
+    { immediate: true },
+  );
+
+  function toggleTheme(): void {
+    theme.value = theme.value === 'light' ? 'dark' : 'light';
+  }
+
   function reset(): void {
     quality.value = DEFAULTS.quality;
     platform.value = DEFAULTS.platform;
@@ -63,7 +81,8 @@ export const useSettingsStore = defineStore('settings', () => {
     volume.value = DEFAULTS.volume;
     muted.value = DEFAULTS.muted;
     showTranslation.value = DEFAULTS.showTranslation;
+    theme.value = DEFAULTS.theme;
   }
 
-  return { quality, platform, limit, volume, muted, showTranslation, reset };
+  return { quality, platform, limit, volume, muted, showTranslation, theme, toggleTheme, reset };
 });

@@ -4,7 +4,7 @@
   "private": true,
   "description": "网易云音乐后端：封装 NeteaseCloudMusicApi 4.32.0（需以 Node 20 运行）",
   "scripts": {
-    "start": "node node_modules/NeteaseCloudMusicApi/app.js"
+    "start": "PORT=3010 HOST=127.0.0.1 node node_modules/NeteaseCloudMusicApi/app.js"
   },
   "dependencies": {
     "NeteaseCloudMusicApi": "4.32.0"

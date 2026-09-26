@@ -106,11 +106,12 @@ export interface QrSession {
   key: string;
   qrimg: string;
   qrurl: string;
+  type?: 'qq' | 'wx';
 }
 
 export interface QrCheckResponse {
   code: number;
-  state: 'waiting' | 'scanned' | 'expired' | 'confirmed' | 'unknown';
+  state: 'waiting' | 'scanned' | 'expired' | 'confirmed' | 'failed' | 'unknown';
   message: string;
   status?: CredentialStatus;
 }

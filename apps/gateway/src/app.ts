@@ -26,6 +26,9 @@ import { trackRouter } from './routes/track.js';
  *   POST   /api/login/netease/qr
  *   GET    /api/login/netease/qr/check?key=
  *   DELETE /api/login/netease
+ *   POST   /api/login/qq/qr?type=qq|wx
+ *   GET    /api/login/qq/qr/check?key=&type=qq|wx
+ *   DELETE /api/login/qq
  */
 export function createApp(): Express {
   const app = express();

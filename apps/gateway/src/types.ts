@@ -23,13 +23,6 @@ export interface Track {
   qualities: Quality[];
 }
 
-export interface ResolvedUrl {
-  /** 永远指向本网关的 /api/stream/...，不是平台 CDN 地址 */
-  url: string;
-  expiresAt: number;
-  quality: QualityLevel;
-}
-
 export interface LyricResult {
   lrc: string;
   translated?: string;
@@ -48,14 +41,6 @@ export interface DegradedInfo {
   platforms: Platform[];
   /** 逐平台原因，便于界面直接展示 */
   reasons: Partial<Record<Platform, string>>;
-}
-
-export interface GatewayErrorBody {
-  error: {
-    code: string;
-    message: string;
-    platform?: Platform;
-  };
 }
 
 export const QUALITY_LABELS: Record<QualityLevel, string> = {

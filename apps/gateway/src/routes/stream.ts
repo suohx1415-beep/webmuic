@@ -27,6 +27,31 @@ function parseQuality(raw: string): QualityLevel {
   return raw;
 }
 
+const ALLOWED_CDN_HOSTS = [
+  /(^|\.)music\.126\.net$/,
+  /(^|\.)qq\.com$/,
+  /(^|\.)gtimg\.cn$/,
+  /(^|\.)tc\.qq\.com$/,
+  /(^|\.)smtcdns\.net$/,
+  /(^|\.)qpic\.cn$/,
+];
+
+function validateStreamUrl(rawUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw err.badRequest('非法的音频流地址');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw err.badRequest('非法的音频流协议');
+  }
+  const isAllowed = ALLOWED_CDN_HOSTS.some((pattern) => pattern.test(parsed.hostname));
+  if (!isAllowed) {
+    throw err.badRequest(`不允许代理该域名的音频流：${parsed.hostname}`);
+  }
+}
+
 interface StreamTarget {
   platform: 'netease' | 'qq';
   platformTrackId: string;
@@ -35,6 +60,8 @@ interface StreamTarget {
 }
 
 async function fetchUpstream(target: StreamTarget, req: Request): Promise<Response> {
+  validateStreamUrl(target.url);
+
   const headers: Record<string, string> = {
     // 与本机网关保持一致的身份，避免被 CDN 当成爬虫
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
@@ -44,8 +71,19 @@ async function fetchUpstream(target: StreamTarget, req: Request): Promise<Respon
   const ifRange = req.headers['if-range'];
   if (typeof ifRange === 'string' && ifRange) headers['if-range'] = ifRange;
 
+  const abortController = new AbortController();
+  req.on('close', () => abortController.abort());
+  const reqSignal = (req as unknown as { signal?: AbortSignal }).signal;
+  const signals: AbortSignal[] = [abortController.signal, AbortSignal.timeout(30_000)];
+  if (reqSignal instanceof AbortSignal) {
+    signals.push(reqSignal);
+  }
+  const signal = typeof AbortSignal.any === 'function'
+    ? AbortSignal.any(signals)
+    : abortController.signal;
+
   // 转发到平台 CDN 时不再受本地上游限速影响（音频请求量大且是顺序读取）
-  return fetch(target.url, { headers, signal: AbortSignal.timeout(30_000) });
+  return fetch(target.url, { headers, signal });
 }
 
 /**
@@ -73,6 +111,11 @@ streamRouter.get(
       throw err.urlUnavailable(target.platform);
     }
 
+    if (res.writableEnded || res.destroyed) {
+      upstream.body?.cancel().catch(() => undefined);
+      return;
+    }
+
     for (const name of PASS_THROUGH_RESPONSE_HEADERS) {
       const value = upstream.headers.get(name);
       if (value) res.setHeader(name, value);
@@ -93,7 +136,10 @@ streamRouter.get(
     const body = Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]);
     // 前端拖动进度会频繁中断请求，务必把上游流一并销毁，避免连接堆积
     res.on('close', () => body.destroy());
-    body.on('error', () => res.destroy());
+    res.on('error', () => body.destroy());
+    body.on('error', () => {
+      if (!res.destroyed) res.destroy();
+    });
     body.pipe(res);
   }),
 );

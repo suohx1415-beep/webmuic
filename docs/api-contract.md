@@ -184,6 +184,9 @@ QQ 部分歌单对匿名身份不可见，会返回 404，message 里带上游�
 | `POST` | `/api/login/netease/qr` | 返回 `{ key, qrimg, qrurl }`，`qrimg` 是 dataURL |
 | `GET` | `/api/login/netease/qr/check?key=` | `{ code, state, message, status? }`，`state` = `waiting`/`scanned`/`expired`/`confirmed` |
 | `DELETE` | `/api/login/netease` | 退出网易云登录 |
+| `POST` | `/api/login/qq/qr?type=qq\|wx` | 返回 `{ key, qrimg, qrurl, type }`，支持手机 QQ 扫码与微信扫码 |
+| `GET` | `/api/login/qq/qr/check?key=&type=` | `{ code, state, message, status? }`，轮询 QQ/微信扫码登录状态 |
+| `DELETE` | `/api/login/qq` | 退出 QQ 音乐登录（清除凭证并同步清空 `.qq-cookie.txt`） |
 
 `POST /api/credentials/qq` 的响应：
 

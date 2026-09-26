@@ -113,8 +113,17 @@ export const api = {
   createNeteaseQr: () => request<QrSession>('/api/login/netease/qr', { method: 'POST' }),
 
   checkNeteaseQr: (key: string) =>
-    request<QrCheckResponse>(`/api/login/netease/qr/check${query({ key })}`),
+    request<QrCheckResponse>(`/api/login/netease/qr/check${query({ key, _t: Date.now() })}`),
 
   logoutNetease: () =>
     request<{ ok: boolean }>('/api/login/netease', { method: 'DELETE' }),
+
+  createQqQr: (type: 'qq' | 'wx' = 'qq') =>
+    request<QrSession>(`/api/login/qq/qr${query({ type, _t: Date.now() })}`, { method: 'POST' }),
+
+  checkQqQr: (key: string, type: 'qq' | 'wx' = 'qq') =>
+    request<QrCheckResponse>(`/api/login/qq/qr/check${query({ key, type, _t: Date.now() })}`),
+
+  logoutQq: () =>
+    request<{ ok: boolean }>('/api/login/qq', { method: 'DELETE' }),
 };

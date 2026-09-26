@@ -63,8 +63,9 @@ export async function upstreamFetch(
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    const message = /abort/i.test(detail) ? `请求超时（${timeoutMs}ms）` : detail;
+    const rawDetail = error instanceof Error ? error.message : String(error);
+    const sanitized = rawDetail.replace(/([?&]cookie=)[^&]+/gi, '$1[REDACTED]');
+    const message = /abort/i.test(sanitized) ? `请求超时（${timeoutMs}ms）` : sanitized;
     platformHealth.recordFailure(platform, 'UPSTREAM_UNAVAILABLE');
     throw err.upstreamUnavailable(platform, message);
   }

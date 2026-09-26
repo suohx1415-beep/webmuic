@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, ApiError } from '@/api/client';
 import type { PlaylistResponse } from '@/api/types';
+import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
 import TrackList from '@/components/TrackList.vue';
 import { usePlayerStore } from '@/stores/player';
@@ -17,18 +18,25 @@ const data = ref<PlaylistResponse | null>(null);
 const loading = ref(false);
 const error = ref('');
 const manualId = ref('');
+let currentLoadToken = 0;
 
 async function load(id: string): Promise<void> {
   if (!id) return;
+  const token = ++currentLoadToken;
   loading.value = true;
   error.value = '';
   data.value = null;
   try {
-    data.value = await api.playlist(id);
+    const res = await api.playlist(id);
+    if (token !== currentLoadToken || route.params.id !== id) return;
+    data.value = res;
   } catch (e) {
+    if (token !== currentLoadToken || route.params.id !== id) return;
     error.value = e instanceof ApiError ? e.message : '歌单加载失败';
   } finally {
-    loading.value = false;
+    if (token === currentLoadToken) {
+      loading.value = false;
+    }
   }
 }
 
@@ -66,39 +74,189 @@ onMounted(() => {
 </script>
 
 <template>
-  <h1 class="page-title">歌单</h1>
-  <p class="page-sub">
-    歌单 id 形如 <code>netease:3778678</code> 或 <code>qq:7614366897</code>。QQ 部分歌单对匿名身份不可见，会给出明确提示。
-  </p>
+  <div class="page-header">
+    <h1 class="page-title">歌单详情</h1>
+    <p class="page-sub">
+      支持直接加载网易云（<code>netease:id</code>）与 QQ 音乐（<code>qq:id</code>）公开歌单。
+    </p>
+  </div>
 
-  <form class="row" style="margin-bottom: 16px" @submit.prevent="openManual">
-    <input v-model="manualId" placeholder="平台:歌单id" style="max-width: 320px" />
-    <button type="submit">打开</button>
-  </form>
+  <!-- 歌单快速输入查询 -->
+  <div class="playlist-search-card">
+    <form class="row" @submit.prevent="openManual">
+      <div class="input-with-icon">
+        <Icon name="music" size="16" class="field-icon" />
+        <input
+          v-model="manualId"
+          placeholder="输入歌单识别码，如 netease:3778678 或 qq:7614366897"
+          class="manual-input"
+        />
+      </div>
+      <button type="submit" class="open-btn" :disabled="!manualId.trim() || loading">
+        打开歌单
+      </button>
+    </form>
+  </div>
 
-  <div v-if="loading" class="muted">加载中…</div>
-  <div v-else-if="error" class="notice error">{{ error }}</div>
+  <!-- 加载状态 -->
+  <div v-if="loading" class="notice ok">
+    <Icon name="refresh" size="16" class="spin-icon" />
+    <span>正在加载歌单曲目...</span>
+  </div>
+  <div v-else-if="error" class="notice error">
+    <Icon name="close" size="16" />
+    <span>{{ error }}</span>
+  </div>
 
+  <!-- 歌单内容 -->
   <template v-if="data">
-    <div class="row" style="gap: 16px; margin-bottom: 14px">
+    <div class="playlist-hero-banner">
       <img
         v-if="data.coverUrl"
         :src="data.coverUrl"
-        alt=""
-        style="width: 110px; height: 110px; border-radius: 10px; object-fit: cover"
+        alt="歌单封面"
+        class="playlist-cover"
       />
-      <div>
-        <div class="row">
-          <h2 style="margin: 0; font-size: 19px">{{ data.name }}</h2>
+      <div class="playlist-meta-info">
+        <div class="row" style="gap: 8px; margin-bottom: 6px">
           <PlatformBadge :platform="data.platform" />
+          <span class="playlist-tag">官方歌单</span>
         </div>
-        <div class="small muted" style="margin: 6px 0 10px">{{ data.tracks.length }} 首曲目</div>
-        <div class="row">
-          <button class="primary" @click="playAll">播放全部</button>
-          <button @click="enqueueAll">加入队列</button>
+        <h2 class="playlist-title">{{ data.name }}</h2>
+        <div class="playlist-stats">
+          <span>{{ data.tracks.length }} 首歌曲</span>
+          <span v-if="data.id" class="meta-dot">·</span>
+          <span v-if="data.id" class="mono-id">{{ data.id }}</span>
+        </div>
+        <div class="row" style="gap: 10px; margin-top: 16px">
+          <button class="primary hero-action-btn" @click="playAll">
+            <Icon name="play" size="15" />
+            <span>播放全部</span>
+          </button>
+          <button class="hero-action-btn" @click="enqueueAll">
+            <Icon name="plus" size="15" />
+            <span>追加至队列</span>
+          </button>
         </div>
       </div>
     </div>
+
     <TrackList :tracks="data.tracks" @error="emit('notify', $event)" />
   </template>
 </template>
+
+<style scoped>
+.playlist-search-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 24px;
+}
+
+.input-with-icon {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.field-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.manual-input {
+  padding-left: 38px;
+  height: 38px;
+  background: var(--bg-canvas);
+  font-size: 13.5px;
+}
+
+.open-btn {
+  height: 38px;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.playlist-hero-banner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.playlist-cover {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+
+.playlist-meta-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-tag {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.playlist-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.playlist-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.mono-id {
+  font-family: monospace;
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+
+.meta-dot {
+  opacity: 0.5;
+}
+
+.hero-action-btn {
+  padding: 8px 18px;
+  font-size: 13px;
+}
+
+.spin-icon {
+  transform-origin: center;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

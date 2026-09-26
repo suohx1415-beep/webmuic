@@ -125,6 +125,10 @@ export const usePlayerStore = defineStore('player', () => {
   function removeAt(target: number): void {
     if (target < 0 || target >= queue.value.length) return;
     queue.value = queue.value.filter((_, i) => i !== target);
+    if (queue.value.length === 0) {
+      clearQueue();
+      return;
+    }
     if (target < index.value) index.value -= 1;
     else if (target === index.value) index.value = Math.min(index.value, queue.value.length - 1);
   }
@@ -149,17 +153,17 @@ export const usePlayerStore = defineStore('player', () => {
     return index.value + 1 >= queue.value.length ? 0 : index.value + 1;
   }
 
-  /** 播放结束或用户点下一首时的推进逻辑（含单曲循环） */
-  function advance(manual = false): void {
+  /** 播放结束或用户点下一首时的推进逻辑（含单曲循环；forceNext 用于不可播错误时强行跳下一首） */
+  function advance(manual = false, forceNext = false): void {
     if (queue.value.length === 0) return;
-    if (mode.value === 'repeat-one' && !manual) {
+    if (mode.value === 'repeat-one' && !manual && !forceNext) {
       currentTime.value = 0;
       playing.value = true;
       return;
     }
     const target = next(mode.value === 'shuffle');
     if (target === -1) return;
-    if (!manual && mode.value === 'sequential' && target === 0) {
+    if (!manual && !forceNext && mode.value === 'sequential' && target === 0) {
       playing.value = false;
       index.value = queue.value.length - 1;
       return;
