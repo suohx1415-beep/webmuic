@@ -46,9 +46,8 @@ albumRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const raw = req.params.id ?? '';
-    const parsed = parseTrackId(raw);
-    if (!parsed) throw err.badRequest(`专辑 id 格式应为 平台:专辑id，收到：${raw}`);
-    const result = await adapterOf(parsed.platform).album(parsed.platformTrackId);
+    const { platform, id } = requirePlaylistId(raw.includes(':album:') ? raw : raw.replace(':', ':album:'));
+    const result = await adapterOf(platform).album(id);
     res.json(result);
   }),
 );

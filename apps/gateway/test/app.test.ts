@@ -150,6 +150,14 @@ describe('网关 HTTP 契约', () => {
     expect(body.error.code).toBe('BAD_REQUEST');
   });
 
+  it('GET /api/album/:id 兼容带与不带 album: 前缀的两种 ID 格式', async () => {
+    // 验证格式解析通过，路由正确派发至适配器（mock 或 404/NOT_FOUND 而不是格式校验 400）
+    const resWithoutPrefix = await fetch(`${origin}/api/album/netease:12345`);
+    const resWithPrefix = await fetch(`${origin}/api/album/netease:album:12345`);
+    expect(resWithoutPrefix.status).not.toBe(400);
+    expect(resWithPrefix.status).not.toBe(400);
+  });
+
   it('GET /api/track/:id/chorus 校验非法曲目 id 格式返回 400', async () => {
     const res = await fetch(`${origin}/api/track/invalid-id/chorus`);
     expect(res.status).toBe(400);
