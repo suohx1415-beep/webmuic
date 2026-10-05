@@ -57,4 +57,16 @@ defineProps<{ platform: Platform; compact?: boolean }>();
   background: #10b981;
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
 }
+
+:global([data-theme='light']) .platform-badge.netease {
+  color: #be123c;
+  background: rgba(225, 29, 72, 0.08);
+  border-color: rgba(225, 29, 72, 0.22);
+}
+
+:global([data-theme='light']) .platform-badge.qq {
+  color: #047857;
+  background: rgba(5, 150, 105, 0.08);
+  border-color: rgba(5, 150, 105, 0.22);
+}
 </style>

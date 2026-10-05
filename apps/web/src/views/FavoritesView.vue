@@ -17,12 +17,56 @@ const favorites = useFavoritesStore();
 const player = usePlayerStore();
 const auth = useAuthStore();
 
-type TabType = 'cloud' | 'local' | 'saved';
+type TabType = 'cloud' | 'local' | 'custom' | 'saved';
 const activeTab = ref<TabType>('cloud');
 
 const userLibrary = ref<UserLibraryResponse | null>(null);
 const libraryLoading = ref(false);
 const actionLoadingId = ref<string | null>(null);
+
+// 自建歌单相关响应式状态
+const activeCustomPlaylistId = ref<string | null>(null);
+const newPlaylistName = ref('');
+const isCreatingPlaylist = ref(false);
+
+const activeCustomPlaylist = computed(() =>
+  favorites.customPlaylists.find((p) => p.id === activeCustomPlaylistId.value) ?? null,
+);
+
+function handleCreatePlaylist(): void {
+  const name = newPlaylistName.value.trim();
+  if (!name) return;
+  const created = favorites.createCustomPlaylist(name);
+  newPlaylistName.value = '';
+  isCreatingPlaylist.value = false;
+  activeCustomPlaylistId.value = created.id;
+  emit('notify', `自建歌单《${created.name}》创建成功`);
+}
+
+function playCustomPlaylist(p: { name: string; tracks: any[] }): void {
+  if (p.tracks.length === 0) {
+    emit('notify', '该自建歌单内暂无歌曲');
+    return;
+  }
+  player.setQueue(p.tracks, 0);
+  player.playing = true;
+  emit('notify', `已开始播放《${p.name}》共 ${p.tracks.length} 首`);
+}
+
+function handleDeleteCustomPlaylist(id: string, name: string): void {
+  if (!confirm(`确定要删除自建歌单《${name}》吗？`)) return;
+  favorites.deleteCustomPlaylist(id);
+  if (activeCustomPlaylistId.value === id) activeCustomPlaylistId.value = null;
+  emit('notify', `已删除歌单《${name}》`);
+}
+
+function handleRenameCustomPlaylist(id: string, currentName: string): void {
+  const updated = prompt('请输入新的歌单名称：', currentName);
+  if (updated && updated.trim()) {
+    favorites.renameCustomPlaylist(id, updated.trim());
+    emit('notify', '歌单已重命名');
+  }
+}
 
 const totalDuration = computed(() =>
   favorites.tracks.reduce((sum, t) => sum + t.durationMs / 1000, 0),
@@ -127,6 +171,14 @@ function goToSettings(): void {
     >
       <Icon name="heart-filled" size="16" />
       <span>本机单曲 ({{ favorites.tracks.length }})</span>
+    </button>
+    <button
+      class="fav-tab-btn"
+      :class="{ active: activeTab === 'custom' }"
+      @click="activeTab = 'custom'"
+    >
+      <Icon name="plus" size="16" />
+      <span>自建歌单 ({{ favorites.customPlaylists.length }})</span>
     </button>
     <button
       class="fav-tab-btn"
@@ -417,7 +469,166 @@ function goToSettings(): void {
     />
   </div>
 
-  <!-- Tab 3: 收藏的歌单与专辑 -->
+  <!-- Tab: 自建歌单 -->
+  <div v-else-if="activeTab === 'custom'" class="tab-content">
+    <!-- 详情状态：展示当前查看的自建歌单 -->
+    <template v-if="activeCustomPlaylist">
+      <div class="favorites-banner">
+        <div class="favorites-icon-badge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%)">
+          <Icon name="queue" size="32" />
+        </div>
+        <div class="favorites-info">
+          <div class="row" style="gap: 8px; align-items: center">
+            <button class="ghost small-btn" style="padding: 2px 8px" @click="activeCustomPlaylistId = null">
+              ← 返回歌单列表
+            </button>
+          </div>
+          <h2 class="favorites-hero-title" style="margin-top: 6px">
+            {{ activeCustomPlaylist.name }}
+          </h2>
+          <p class="page-sub">
+            自建本地歌单 · 共 {{ activeCustomPlaylist.tracks.length }} 首歌曲
+          </p>
+          <div class="favorites-actions-row">
+            <button
+              class="primary play-all-btn"
+              :disabled="activeCustomPlaylist.tracks.length === 0"
+              @click="playCustomPlaylist(activeCustomPlaylist)"
+            >
+              <Icon name="play" size="16" />
+              <span>播放全部</span>
+            </button>
+            <button
+              class="ghost"
+              @click="handleRenameCustomPlaylist(activeCustomPlaylist.id, activeCustomPlaylist.name)"
+            >
+              重命名
+            </button>
+            <button
+              class="ghost clear-btn"
+              @click="handleDeleteCustomPlaylist(activeCustomPlaylist.id, activeCustomPlaylist.name)"
+            >
+              删除歌单
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <TrackList
+        :tracks="activeCustomPlaylist.tracks"
+        empty-text="该自建歌单暂无歌曲。在歌曲菜单或收藏中添加曲目。"
+        @error="emit('notify', $event)"
+      />
+    </template>
+
+    <!-- 列表状态：展示所有自建歌单网格与创建入口 -->
+    <template v-else>
+      <div class="section-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center">
+        <div>
+          <h3 class="section-title">我的自建歌单</h3>
+          <span class="muted small">自由混排网易云与 QQ 音乐曲目，离线保存于本地。</span>
+        </div>
+        <div class="row" style="gap: 8px">
+          <input
+            v-if="isCreatingPlaylist"
+            v-model="newPlaylistName"
+            type="text"
+            placeholder="输入歌单名称..."
+            style="padding: 6px 12px; font-size: 13px; border-radius: 6px; width: 160px"
+            @keydown.enter="handleCreatePlaylist"
+            @keydown.esc="isCreatingPlaylist = false"
+          />
+          <button
+            v-if="isCreatingPlaylist"
+            class="primary small-btn"
+            :disabled="!newPlaylistName.trim()"
+            @click="handleCreatePlaylist"
+          >
+            确认创建
+          </button>
+          <button
+            v-if="isCreatingPlaylist"
+            class="ghost small-btn"
+            @click="isCreatingPlaylist = false"
+          >
+            取消
+          </button>
+          <button
+            v-else
+            class="primary small-btn"
+            @click="isCreatingPlaylist = true"
+          >
+            <Icon name="plus" size="14" />
+            <span>新建歌单</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="favorites.customPlaylists.length === 0" class="empty-cloud-box">
+        <Icon name="queue" size="36" class="muted" />
+        <p>还没有自建歌单，点击上方「新建歌单」开始创建。</p>
+      </div>
+
+      <div v-else class="card-grid">
+        <div
+          v-for="item in favorites.customPlaylists"
+          :key="item.id"
+          class="collection-card"
+        >
+          <div class="card-cover-wrapper" @click="activeCustomPlaylistId = item.id">
+            <img
+              v-if="item.tracks[0]?.album.coverUrl"
+              :src="item.tracks[0].album.coverUrl"
+              :alt="item.name"
+              class="card-cover-img"
+              loading="lazy"
+            />
+            <div v-else class="card-cover-placeholder">
+              <Icon name="queue" size="32" />
+            </div>
+            <div class="cover-overlay">
+              <button
+                class="cover-play-btn"
+                title="立即播放全部"
+                @click.stop="playCustomPlaylist(item)"
+              >
+                <Icon name="play" size="20" />
+              </button>
+            </div>
+          </div>
+
+          <div class="card-info">
+            <h4 class="card-title" :title="item.name" @click="activeCustomPlaylistId = item.id">
+              {{ item.name }}
+            </h4>
+            <div class="card-meta">
+              <span>{{ item.tracks.length }} 首歌曲</span>
+            </div>
+            <div class="card-actions-bar">
+              <button
+                class="ghost card-action-btn"
+                title="播放全部"
+                @click.stop="playCustomPlaylist(item)"
+              >
+                <Icon name="play" size="14" />
+                <span>播放</span>
+              </button>
+              <button
+                class="ghost card-action-btn"
+                title="查看与管理"
+                @click.stop="activeCustomPlaylistId = item.id"
+              >
+                <Icon name="discover" size="14" />
+                <span>查看</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Tab 4: 收藏的歌单与专辑 -->
   <div v-else-if="activeTab === 'saved'" class="tab-content">
     <div v-if="favorites.playlists.length === 0" class="empty-cloud-box">
       <Icon name="queue" size="36" class="muted" />

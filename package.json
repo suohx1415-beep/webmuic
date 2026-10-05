@@ -4,11 +4,14 @@
   "private": true,
   "description": "本机自用的 WebUI 音乐播放器：聚合网易云音乐与 QQ 音乐",
   "scripts": {
+    "start": "node scripts/dev-all.mjs",
+    "start:open": "node scripts/dev-all.mjs --open",
+    "bootstrap": "node scripts/install-all.mjs",
     "dev": "node scripts/dev-all.mjs",
     "smoke": "node scripts/smoke.mjs",
     "routes": "node scripts/dump-routes.mjs",
     "patch:qq": "node scripts/patch-qq-backend.mjs",
-    "test": "pnpm --filter @webmuic/gateway test",
+    "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r typecheck"
   },
   "engines": {

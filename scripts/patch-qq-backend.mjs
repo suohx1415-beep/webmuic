@@ -18,6 +18,7 @@
  *   P6 src/services/search/getSearchByKey.ts —— 搜索上游换成仍可用的 search_for_qq_cp
  *      （原 client_search_cp 已对本机所有请求返回 500/0 字节，实测 2026-09）
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +26,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const QQ = path.join(ROOT, 'services', 'qq');
 const MARK = '[webmuic patch]';
+
+const scriptContent = fs.readFileSync(fileURLToPath(import.meta.url));
+const scriptHash = crypto.createHash('sha256').update(scriptContent).digest('hex').slice(0, 16);
 
 if (!fs.existsSync(QQ)) {
   console.error(`找不到 QQ 后端目录：${QQ}\n请先执行: git clone -b next https://github.com/Rain120/qq-music-api.git services/qq`);
@@ -39,18 +43,20 @@ function patchFile(rel, edits) {
     results.push(`跳过 ${rel}（文件不存在）`);
     return;
   }
-  let src = fs.readFileSync(file, 'utf8');
+  let src = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   let applied = 0;
   for (const { find, replace, label } of edits) {
-    if (src.includes(replace) || src.includes(`${MARK} ${label}`)) {
+    const normFind = find.replace(/\r\n/g, '\n');
+    const normReplace = replace.replace(/\r\n/g, '\n');
+    if (src.includes(normReplace) || src.includes(`${MARK} ${label}`)) {
       results.push(`已应用 ${rel} ← ${label}`);
       continue;
     }
-    if (!src.includes(find)) {
+    if (!src.includes(normFind)) {
       results.push(`⚠ 未匹配 ${rel} ← ${label}（上游代码可能已变化，请人工核对）`);
       continue;
     }
-    src = src.replace(find, replace);
+    src = src.replace(normFind, normReplace);
     applied += 1;
     results.push(`✔ 补丁 ${rel} ← ${label}`);
   }
@@ -177,6 +183,7 @@ fs.writeFileSync(
   markerFile,
   [
     `patchedAt=${new Date().toISOString()}`,
+    `scriptHash=${scriptHash}`,
     'patches=P1,P2,P3,P4,P5,P6',
     'unmatched=0',
     '',

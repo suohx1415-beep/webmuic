@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import type { Track, UrlResponse } from '@/api/types';
 import { load, save, STORAGE_KEYS } from '@/storage';
 
@@ -47,11 +47,13 @@ export type PlayMode = 'sequential' | 'repeat-one' | 'repeat-all' | 'shuffle';
 export const usePlayerStore = defineStore('player', () => {
   const persisted = load<PersistedQueue>(STORAGE_KEYS.queue, { tracks: [], index: 0 });
 
-  const queue = ref<Track[]>(persisted.tracks ?? []);
+  const queue = shallowRef<Track[]>(persisted.tracks ?? []);
   const index = ref(Math.min(Math.max(0, persisted.index ?? 0), Math.max(0, queue.value.length - 1)));
   const playing = ref(false);
   const loadingUrl = ref(false);
   const mode = ref<PlayMode>('sequential');
+  /** 显式重播指令；不能用 currentTime=0 代替媒体 seek。 */
+  const restartRequest = ref(0);
 
   /** 当前曲目的真实播放地址（指向网关 /api/stream/...） */
   const streamUrl = ref('');
@@ -62,7 +64,7 @@ export const usePlayerStore = defineStore('player', () => {
   const currentTime = ref(0);
   /** 浏览器读到的实际时长；部分格式 metadata 不可用，回退到曲目元数据 */
   const mediaDuration = ref(0);
-  const lyric = ref<LyricLine[]>([]);
+  const lyric = shallowRef<LyricLine[]>([]);
   const lyricError = ref('');
 
   const current = computed<Track | null>(() => queue.value[index.value] ?? null);
@@ -91,10 +93,15 @@ export const usePlayerStore = defineStore('player', () => {
     return result;
   });
 
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
   watch(
     () => ({ tracks: queue.value, index: index.value }),
-    (value) => save(STORAGE_KEYS.queue, value),
-    { deep: true },
+    (value) => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        save(STORAGE_KEYS.queue, value);
+      }, 300);
+    },
   );
 
   function setQueue(tracks: Track[], startIndex = 0): void {
@@ -105,7 +112,11 @@ export const usePlayerStore = defineStore('player', () => {
   /** 追加曲目（按 id 去重），返回实际新增的数量 */
   function append(tracks: Track[]): number {
     const existing = new Set(queue.value.map((t) => t.id));
-    const added = tracks.filter((t) => !existing.has(t.id));
+    const added = tracks.filter((t) => {
+      if (existing.has(t.id)) return false;
+      existing.add(t.id);
+      return true;
+    });
     queue.value = [...queue.value, ...added];
     return added.length;
   }
@@ -140,6 +151,12 @@ export const usePlayerStore = defineStore('player', () => {
     streamUrl.value = '';
     resolved.value = null;
     lyric.value = [];
+    lyricError.value = '';
+    urlError.value = '';
+    degradedNotice.value = '';
+    currentTime.value = 0;
+    mediaDuration.value = 0;
+    loadingUrl.value = false;
   }
 
   function next(shuffle = false): number {
@@ -157,7 +174,7 @@ export const usePlayerStore = defineStore('player', () => {
   function advance(manual = false, forceNext = false): void {
     if (queue.value.length === 0) return;
     if (mode.value === 'repeat-one' && !manual && !forceNext) {
-      currentTime.value = 0;
+      restartRequest.value += 1;
       playing.value = true;
       return;
     }
@@ -168,6 +185,7 @@ export const usePlayerStore = defineStore('player', () => {
       index.value = queue.value.length - 1;
       return;
     }
+    if (queue.value[target]?.id === current.value?.id) restartRequest.value += 1;
     index.value = target;
     playing.value = true;
   }
@@ -176,10 +194,11 @@ export const usePlayerStore = defineStore('player', () => {
     if (queue.value.length === 0) return;
     // 播放超过 3 秒时，上一首先回到开头（与主流播放器一致）
     if (currentTime.value > 3) {
-      currentTime.value = 0;
+      restartRequest.value += 1;
       return;
     }
     const target = index.value - 1 < 0 ? queue.value.length - 1 : index.value - 1;
+    if (queue.value[target]?.id === current.value?.id) restartRequest.value += 1;
     index.value = target;
     playing.value = true;
   }
@@ -190,6 +209,7 @@ export const usePlayerStore = defineStore('player', () => {
     playing,
     loadingUrl,
     mode,
+    restartRequest,
     streamUrl,
     resolved,
     urlError,

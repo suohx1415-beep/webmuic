@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { hasMoreSearchResults } from '@/api/searchPage';
 import { useRouter } from 'vue-router';
 import { api, ApiError } from '@/api/client';
 import type {
@@ -37,7 +38,9 @@ const currentPage = ref(0);
 const actionLoadingId = ref<string | null>(null);
 
 let suggestTimer: number | undefined;
-let suggestAbort: AbortController | null = null;
+let suggestToken = 0;
+let searchToken = 0;
+let submittedParams: { q: string; platform: string; limit: number } | null = null;
 
 const platforms = [
   { value: 'all', label: '双平台聚合' },
@@ -72,37 +75,39 @@ const degradedText = computed(() => {
 });
 
 const canLoadMore = computed(() => {
-  if (searchType.value === 'song') {
-    if (!result.value) return false;
-    const loaded = result.value.tracks.length;
-    const maxTotal = Math.max(result.value.totals.netease ?? 0, result.value.totals.qq ?? 0);
-    return maxTotal === 0 ? loaded > 0 : loaded < Math.min(maxTotal, 200);
-  }
-  if (searchType.value === 'playlist') {
-    if (!playlistResult.value) return false;
-    const loaded = playlistResult.value.playlists.length;
-    const maxTotal = Math.max(playlistResult.value.totals.netease ?? 0, playlistResult.value.totals.qq ?? 0);
-    return maxTotal === 0 ? loaded > 0 : loaded < Math.min(maxTotal, 150);
-  }
-  if (!albumResult.value) return false;
-  const loaded = albumResult.value.albums.length;
-  const maxTotal = Math.max(albumResult.value.totals.netease ?? 0, albumResult.value.totals.qq ?? 0);
-  return maxTotal === 0 ? loaded > 0 : loaded < Math.min(maxTotal, 150);
+  const body = searchType.value === 'song' ? result.value
+    : searchType.value === 'playlist' ? playlistResult.value : albumResult.value;
+  return !!body && hasMoreSearchResults(body, searchType.value === 'song' ? 200 : 150);
 });
 
 async function runSearch(page = 0, append = false): Promise<void> {
-  const query = keyword.value.trim();
-  if (!query) return;
+  if (append && (loading.value || !submittedParams)) return;
+  const params = append && submittedParams ? submittedParams : {
+    q: keyword.value.trim(), platform: settings.platform, limit: settings.limit,
+  };
+  const query = params.q;
+  const token = ++searchToken;
+  if (!query) {
+    error.value = '';
+    submittedParams = null;
+    loading.value = false;
+    result.value = null;
+    playlistResult.value = null;
+    albumResult.value = null;
+    return;
+  }
+  if (!append) {
+    result.value = null;
+    playlistResult.value = null;
+    albumResult.value = null;
+  }
   loading.value = true;
   error.value = '';
   try {
     if (searchType.value === 'playlist') {
-      const body = await api.searchPlaylists({
-        q: query,
-        platform: settings.platform,
-        limit: settings.limit,
-        offset: page * settings.limit,
-      });
+      const body = await api.searchPlaylists({ ...params, offset: page * params.limit });
+      if (token !== searchToken) return;
+      submittedParams = params;
       submitted.value = query;
       currentPage.value = page;
       if (append && playlistResult.value) {
@@ -115,12 +120,9 @@ async function runSearch(page = 0, append = false): Promise<void> {
         playlistResult.value = body;
       }
     } else if (searchType.value === 'album') {
-      const body = await api.searchAlbums({
-        q: query,
-        platform: settings.platform,
-        limit: settings.limit,
-        offset: page * settings.limit,
-      });
+      const body = await api.searchAlbums({ ...params, offset: page * params.limit });
+      if (token !== searchToken) return;
+      submittedParams = params;
       submitted.value = query;
       currentPage.value = page;
       if (append && albumResult.value) {
@@ -133,12 +135,9 @@ async function runSearch(page = 0, append = false): Promise<void> {
         albumResult.value = body;
       }
     } else {
-      const body = await api.search({
-        q: query,
-        platform: settings.platform,
-        limit: settings.limit,
-        offset: page * settings.limit,
-      });
+      const body = await api.search({ ...params, offset: page * params.limit });
+      if (token !== searchToken) return;
+      submittedParams = params;
       submitted.value = query;
       currentPage.value = page;
       if (append && result.value) {
@@ -152,6 +151,7 @@ async function runSearch(page = 0, append = false): Promise<void> {
       }
     }
   } catch (e) {
+    if (token !== searchToken) return;
     error.value = e instanceof ApiError ? e.message : '搜索失败';
     if (!append) {
       if (searchType.value === 'song') result.value = null;
@@ -159,27 +159,27 @@ async function runSearch(page = 0, append = false): Promise<void> {
       else albumResult.value = null;
     }
   } finally {
-    loading.value = false;
+    if (token === searchToken) loading.value = false;
   }
 }
 
 function loadSuggestions(): void {
   if (suggestTimer) clearTimeout(suggestTimer);
+  const token = ++suggestToken;
+  suggestions.value = [];
   suggestTimer = window.setTimeout(async () => {
     const query = keyword.value.trim();
     if (query.length < 2) {
       suggestions.value = [];
       return;
     }
-    suggestAbort?.abort();
-    suggestAbort = new AbortController();
     try {
       const body = await api.suggest(query);
-      if (keyword.value.trim() === query) {
+      if (token === suggestToken && keyword.value.trim() === query) {
         suggestions.value = body.suggestions;
       }
     } catch {
-      suggestions.value = [];
+      if (token === suggestToken) suggestions.value = [];
     }
   }, 200);
 }
@@ -193,6 +193,8 @@ function pickSuggestion(text: string): void {
 function clearQuery(): void {
   keyword.value = '';
   suggestions.value = [];
+  ++suggestToken;
+  clearTimeout(suggestTimer);
 }
 
 onMounted(() => {
@@ -201,12 +203,19 @@ onMounted(() => {
 });
 
 watch(searchType, () => {
-  if (keyword.value.trim()) {
-    void runSearch(0, false);
-  }
+  void runSearch(0, false);
+});
+
+onBeforeUnmount(() => {
+  ++searchToken;
+  ++suggestToken;
+  clearTimeout(suggestTimer);
 });
 
 async function rememberQuery(): Promise<void> {
+  ++suggestToken;
+  clearTimeout(suggestTimer);
+  suggestions.value = [];
   save(STORAGE_KEYS.lastQuery, keyword.value.trim());
   await runSearch(0, false);
 }
@@ -504,6 +513,10 @@ function openCollectionDetail(id: string): void {
         </div>
       </div>
     </div>
+  </div>
+
+  <div v-if="!loading && ((searchType === 'playlist' && playlistResult?.playlists.length === 0) || (searchType === 'album' && albumResult?.albums.length === 0))" class="notice" role="status">
+    未找到匹配结果，试试其他关键词或平台。
   </div>
 
   <!-- 加载更多 -->

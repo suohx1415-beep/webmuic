@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import { Readable, pipeline } from 'node:stream';
 import { Router, type Request } from 'express';
 import { err } from '../errors.js';
 import { asyncHandler, queryString } from '../http.js';
@@ -126,6 +126,26 @@ streamRouter.get(
     res.setHeader('x-quality', target.quality);
     res.setHeader('cache-control', 'no-store');
 
+    const isDownload = queryString(req, 'download') === '1';
+    if (isDownload) {
+      const { adapterOf } = await import('../adapters/index.js');
+      const track = await adapterOf(target.platform).trackDetail(target.platformTrackId).catch(() => null);
+      const artists = track?.artists.map((a) => a.name).join(' & ') || '未知歌手';
+      const title = track?.title || target.platformTrackId;
+      const contentType = upstream.headers.get('content-type') || '';
+      let ext = 'mp3';
+      if (contentType.includes('flac') || target.quality === 'lossless' || target.quality === 'hires') {
+        ext = 'flac';
+      } else if (contentType.includes('m4a') || contentType.includes('mp4') || contentType.includes('aac')) {
+        ext = 'm4a';
+      } else if (contentType.includes('ogg')) {
+        ext = 'ogg';
+      }
+      const rawName = `${artists} - ${title}.${ext}`.replace(/[\\/:*?"<>|]/g, '_');
+      const encodedName = encodeURIComponent(rawName);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`);
+    }
+
     res.status(upstream.status);
 
     if (!upstream.body) {
@@ -134,12 +154,12 @@ streamRouter.get(
     }
 
     const body = Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]);
-    // 前端拖动进度会频繁中断请求，务必把上游流一并销毁，避免连接堆积
-    res.on('close', () => body.destroy());
-    res.on('error', () => body.destroy());
-    body.on('error', () => {
-      if (!res.destroyed) res.destroy();
+    // 前端拖动进度会频繁中断请求，使用 pipeline 自动管理双向背压并保证上游流及时释放
+    pipeline(body, res, (error) => {
+      if (error && (error as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+        // 忽略客户端拖动/切歌断开连接引起的预期中断
+      }
+      body.destroy();
     });
-    body.pipe(res);
   }),
 );

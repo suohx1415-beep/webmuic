@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
-import { artistNames, formatBytes, formatTime } from '@/format';
+import { useDesktopLyricPip } from '@/composables/useDesktopLyricPip';
+import { artistNames, formatTime } from '@/format';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -16,15 +17,18 @@ const emit = defineEmits<{
   seek: [seconds: number];
   openQueue: [];
   openLyric: [];
+  switchSource: [];
 }>();
 
 const player = usePlayerStore();
 const settings = useSettingsStore();
+const { isPipActive, isSupported: isPipSupported, togglePip } = useDesktopLyricPip();
 
 const progressPercent = computed(() => {
   const total = player.duration;
   if (!total || total <= 0) return 0;
-  return Math.min(100, Math.max(0, (player.currentTime / total) * 100));
+  const current = isDraggingProgress.value ? scrubbingTime.value : player.currentTime;
+  return Math.min(100, Math.max(0, (current / total) * 100));
 });
 
 const volumePercent = computed(() => {
@@ -57,12 +61,46 @@ const modeIconName = computed(() => {
 
 const MODES = ['sequential', 'repeat-one', 'repeat-all', 'shuffle'] as const;
 
+const chorus = computed(() => player.current?.chorus);
+
+const chorusPercent = computed(() => {
+  if (!chorus.value || !player.duration || player.duration <= 0) return null;
+  const ratio = (chorus.value.startTimeMs / 1000) / player.duration;
+  if (ratio <= 0.005 || ratio >= 0.995) return null;
+  return Number((ratio * 100).toFixed(2));
+});
+
+const isPlayingChorus = computed(() => {
+  if (!chorus.value) return false;
+  const curMs = player.currentTime * 1000;
+  const start = chorus.value.startTimeMs;
+  const end = chorus.value.endTimeMs ?? (start + 30000);
+  return curMs >= start && curMs <= end;
+});
+
+function seekToChorus(): void {
+  if (!chorus.value) return;
+  emit('seek', chorus.value.startTimeMs / 1000);
+  if (!player.playing) {
+    emit('toggle');
+  }
+}
+
 function cycleMode(): void {
   const currentIndex = MODES.indexOf(player.mode);
   player.mode = MODES[(currentIndex + 1) % MODES.length] ?? 'sequential';
 }
 
+const isDraggingProgress = ref(false);
+const scrubbingTime = ref(0);
+
 function onProgressInput(event: Event): void {
+  isDraggingProgress.value = true;
+  scrubbingTime.value = Number((event.target as HTMLInputElement).value);
+}
+
+function onProgressChange(event: Event): void {
+  isDraggingProgress.value = false;
   emit('seek', Number((event.target as HTMLInputElement).value));
 }
 
@@ -71,13 +109,25 @@ function onVolumeInput(event: Event): void {
   settings.volume = value;
   settings.muted = value === 0;
 }
+
+function downloadCurrentTrack(): void {
+  if (!player.current) return;
+  const url = `/api/stream/${encodeURIComponent(player.current.id)}?quality=${settings.quality}&download=1`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 </script>
 
 <template>
   <footer class="player-bar">
     <!-- 左侧：曲目信息与专辑光效 -->
     <div class="player-track-info">
-      <div class="player-cover-box">
+      <button class="player-cover-box" :disabled="!player.current" :aria-expanded="props.lyricOpen" aria-label="打开沉浸播放" title="打开沉浸播放" @click="emit('openLyric')">
         <div
           v-if="player.current?.album.coverUrl"
           class="player-cover-glow"
@@ -87,12 +137,13 @@ function onVolumeInput(event: Event): void {
           v-if="player.current?.album.coverUrl"
           class="player-cover"
           :src="player.current.album.coverUrl"
-          alt="Album Art"
+          :alt="`${player.current?.title ?? ''} 封面`"
         />
         <div v-else class="player-cover placeholder-disc">
           <Icon name="music" size="20" />
         </div>
-      </div>
+        <span class="cover-expand" aria-hidden="true"><Icon name="external" size="18" /></span>
+      </button>
 
       <div class="player-meta">
         <div class="player-title" :title="player.current?.title">
@@ -102,16 +153,13 @@ function onVolumeInput(event: Event): void {
           <template v-if="player.current">
             <PlatformBadge :platform="player.current.platform" compact />
             <span class="artist-text" :title="artistNames(player.current)">{{ artistNames(player.current) }}</span>
+            <span v-if="player.resolved" class="quality-badge" :class="player.resolved.quality.toLowerCase()">
+              {{ player.resolved.qualityLabel }}
+            </span>
           </template>
           <template v-else>
             <span class="artist-text">从推荐或搜索中挑选歌曲</span>
           </template>
-        </div>
-        <div v-if="player.resolved" class="player-stream-info">
-          <span class="quality-badge" :class="player.resolved.quality.toLowerCase()">
-            {{ player.resolved.qualityLabel }}
-          </span>
-          <span v-if="player.resolved.size">{{ formatBytes(player.resolved.size) }}</span>
         </div>
       </div>
     </div>
@@ -159,11 +207,24 @@ function onVolumeInput(event: Event): void {
           <Icon name="next" size="17" />
         </button>
 
+        <!-- 副歌高潮一键直达 -->
+        <button
+          v-if="chorus"
+          class="chorus-badge-btn"
+          :class="{ active: isPlayingChorus }"
+          :title="`跳至副歌高潮 (${formatTime(chorus.startTimeMs / 1000)})`"
+          @click="seekToChorus"
+        >
+          <Icon name="flame" size="13" />
+          <span>副歌 {{ formatTime(chorus.startTimeMs / 1000) }}</span>
+        </button>
+
         <!-- 歌词开关 -->
         <button
           class="transport-btn"
           :class="{ active: props.lyricOpen }"
-          title="查看歌词"
+          :title="props.lyricOpen ? '退出沉浸播放' : '沉浸播放与歌词'"
+          :aria-pressed="props.lyricOpen"
           @click="emit('openLyric')"
         >
           <Icon name="lyrics" size="16" />
@@ -174,6 +235,7 @@ function onVolumeInput(event: Event): void {
           class="transport-btn"
           :class="{ active: props.queueOpen }"
           title="播放队列"
+          :aria-expanded="props.queueOpen"
           @click="emit('openQueue')"
         >
           <Icon name="queue" size="16" />
@@ -183,19 +245,37 @@ function onVolumeInput(event: Event): void {
 
       <!-- 进度条 -->
       <div class="progress-bar-wrap">
-        <span>{{ formatTime(player.currentTime) }}</span>
+        <span>{{ formatTime(isDraggingProgress ? scrubbingTime : player.currentTime) }}</span>
         <div class="progress-track-container">
           <div class="progress-track-bg">
             <div class="progress-track-fill" :style="{ width: `${progressPercent}%` }" />
+          </div>
+          <!-- 副歌高潮点锚点标记 -->
+          <div
+            v-if="chorusPercent !== null"
+            class="chorus-track-marker"
+            :class="{ active: isPlayingChorus }"
+            :style="{ left: `${chorusPercent}%` }"
+            :title="`高潮副歌 ${formatTime(chorus!.startTimeMs / 1000)}（点击跳跃）`"
+            @click.stop="seekToChorus"
+          >
+            <div class="chorus-track-marker-pin" />
+            <div class="chorus-tooltip">
+              <span class="chorus-tooltip-icon">🔥</span>
+              <span>高潮 {{ formatTime(chorus!.startTimeMs / 1000) }}</span>
+            </div>
           </div>
           <input
             type="range"
             min="0"
             :max="Math.max(player.duration, 0)"
             step="0.5"
-            :value="player.currentTime"
-            :disabled="!player.current"
+            :value="isDraggingProgress ? scrubbingTime : player.currentTime"
+            :disabled="!player.current || player.loadingUrl || !player.streamUrl"
+            aria-label="播放进度"
+            :aria-valuetext="`${formatTime(isDraggingProgress ? scrubbingTime : player.currentTime)} / ${formatTime(player.duration)}`"
             @input="onProgressInput"
+            @change="onProgressChange"
           />
         </div>
         <span>{{ formatTime(player.duration) }}</span>
@@ -228,15 +308,67 @@ function onVolumeInput(event: Event): void {
             max="1"
             step="0.01"
             :value="settings.muted ? 0 : settings.volume"
+            aria-label="音量"
             @input="onVolumeInput"
           />
         </div>
       </div>
+
+      <button
+        v-if="isPipSupported"
+        class="transport-btn"
+        :class="{ active: isPipActive }"
+        style="width: 28px; height: 28px"
+        :title="isPipActive ? '关闭桌面歌词' : '开启桌面歌词 (画中画置顶小窗)'"
+        @click="togglePip"
+      >
+        <Icon name="pip" size="16" />
+      </button>
+
+      <button
+        v-if="player.current"
+        class="transport-btn"
+        style="width: 28px; height: 28px"
+        title="下载当前音频文件"
+        @click="downloadCurrentTrack"
+      >
+        <Icon name="download" size="16" />
+      </button>
+
+      <button
+        v-if="player.current"
+        class="transport-btn"
+        style="width: 28px; height: 28px"
+        title="跨平台换源（自动寻找另一平台匹配曲目）"
+        @click="emit('switchSource')"
+      >
+        <Icon name="refresh" size="16" />
+      </button>
     </div>
   </footer>
 </template>
 
 <style scoped>
+.player-cover-box {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+.cover-expand {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: #0006;
+  border-radius: inherit;
+  color: white;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.player-cover-box:hover .cover-expand,
+.player-cover-box:focus-visible .cover-expand { opacity: 1; }
 .placeholder-disc {
   display: flex;
   align-items: center;
@@ -290,5 +422,137 @@ function onVolumeInput(event: Event): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 控制栏副歌高潮一键直达小胶囊 */
+.chorus-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.chorus-badge-btn:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  transform: translateY(-1px);
+}
+
+.chorus-badge-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.55);
+  animation: chorus-glow 2s infinite ease-in-out;
+}
+
+@keyframes chorus-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.9);
+  }
+}
+
+/* 进度条上的副歌高潮锚点 */
+.chorus-track-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  cursor: pointer;
+}
+
+.chorus-track-marker-pin {
+  width: 4px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fde68a, #f59e0b);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+  transition: all 0.15s ease;
+}
+
+.progress-track-container:hover .chorus-track-marker-pin,
+.chorus-track-marker:hover .chorus-track-marker-pin {
+  height: 14px;
+  width: 5px;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.9);
+}
+
+.chorus-track-marker.active .chorus-track-marker-pin {
+  background: linear-gradient(180deg, #ffffff, #fbbf24);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 1);
+  animation: chorus-pin-pulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes chorus-pin-pulse {
+  from {
+    transform: scaleY(1);
+    opacity: 0.85;
+  }
+  to {
+    transform: scaleY(1.3);
+    opacity: 1;
+  }
+}
+
+/* 悬浮气泡 */
+.chorus-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(18, 18, 22, 0.92);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fef3c7;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chorus-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: rgba(18, 18, 22, 0.92);
+}
+
+.chorus-track-marker:hover .chorus-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.chorus-tooltip-icon {
+  font-size: 12px;
 }
 </style>

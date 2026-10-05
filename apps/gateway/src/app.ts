@@ -1,5 +1,11 @@
 import express, { type Express } from 'express';
-import { corsForLocalhost, errorMiddleware, notFoundHandler } from './http.js';
+import {
+  corsForLocalhost,
+  errorMiddleware,
+  notFoundHandler,
+  securityHeadersMiddleware,
+  validateHostHeader,
+} from './http.js';
 import { credentialsRouter } from './routes/credentials.js';
 import { healthRouter } from './routes/health.js';
 import { loginRouter } from './routes/login.js';
@@ -36,6 +42,8 @@ import { userRouter } from './routes/user.js';
 export function createApp(): Express {
   const app = express();
   app.disable('x-powered-by');
+  app.use(validateHostHeader);
+  app.use(securityHeadersMiddleware);
   app.use(corsForLocalhost);
   app.use(express.json({ limit: '256kb' }));
 

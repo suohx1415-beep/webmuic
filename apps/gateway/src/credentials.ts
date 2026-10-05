@@ -31,6 +31,25 @@ function readEnvFile(): Record<string, string> {
   return out;
 }
 
+function atomicWriteFile(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(tmpPath, content, { mode: 0o600 });
+    try {
+      fs.chmodSync(tmpPath, 0o600);
+    } catch {}
+    fs.renameSync(tmpPath, filePath);
+  } catch {
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {}
+    fs.writeFileSync(filePath, content, { mode: 0o600 });
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {}
+  }
+}
+
 function writeEnvFile(data: Record<string, string>): void {
   const body = [
     '# webmuic 网关凭证。此文件含平台登录凭证，权限应为 600，且已被 .gitignore 忽略。',
@@ -38,12 +57,7 @@ function writeEnvFile(data: Record<string, string>): void {
     ...Object.entries(data).map(([k, v]) => `${k}=${v}`),
     '',
   ].join('\n');
-  fs.writeFileSync(paths.envFile, body, { mode: 0o600 });
-  try {
-    fs.chmodSync(paths.envFile, 0o600);
-  } catch {
-    /* 某些文件系统不支持 chmod，忽略 */
-  }
+  atomicWriteFile(paths.envFile, body);
   cache = data;
 }
 
@@ -61,12 +75,7 @@ export function syncQqCookieFile(): void {
       ? fs.readFileSync(paths.qqCookieFile, 'utf8')
       : null;
     if (current === cookie) return;
-    fs.writeFileSync(paths.qqCookieFile, cookie, { mode: 0o600 });
-    try {
-      fs.chmodSync(paths.qqCookieFile, 0o600);
-    } catch {
-      /* 忽略 */
-    }
+    atomicWriteFile(paths.qqCookieFile, cookie);
   } catch {
     /* 写不进去时 QQ 侧退化为匿名请求，不影响其它功能 */
   }

@@ -14,6 +14,35 @@ export function asyncHandler(
 
 /** 只放行本机来源；本工具不面向局域网或公网暴露 */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** 校验 Host 请求头，防止恶意网页通过 DNS Rebinding 攻击本地网关 */
+export function validateHostHeader(req: Request, res: Response, next: NextFunction): void {
+  const rawHost = req.headers.host;
+  if (!rawHost) {
+    res.status(400).json({ error: { code: 'BAD_REQUEST', message: '缺少 Host 请求头' } });
+    return;
+  }
+  const hostname = rawHost.startsWith('[')
+    ? rawHost.slice(0, rawHost.indexOf(']') + 1).toLowerCase()
+    : (rawHost.split(':')[0]?.toLowerCase() ?? '');
+
+  if (!ALLOWED_HOSTS.has(hostname)) {
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: '禁止访问：非法的 Host 来源，网关仅限本机访问' },
+    });
+    return;
+  }
+  next();
+}
+
+/** 注入基础安全响应头 */
+export function securityHeadersMiddleware(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+}
 
 export function corsForLocalhost(req: Request, res: Response, next: NextFunction): void {
   const origin = req.headers.origin;
@@ -48,7 +77,11 @@ export function sendError(res: Response, error: unknown): void {
     res.status(error.status).json(body);
     return;
   }
-  const message = error instanceof Error ? error.message : String(error);
+  console.error('[gateway internal error]', error);
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = process.env.NODE_ENV === 'production'
+    ? '网关内部服务异常，请查看服务端日志'
+    : rawMessage;
   res.status(500).json({ error: { code: 'INTERNAL', message } });
 }
 

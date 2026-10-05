@@ -27,7 +27,11 @@ defineProps<{
     | 'external'
     | 'sun'
     | 'moon'
-    | 'album';
+    | 'album'
+    | 'zap'
+    | 'flame'
+    | 'download'
+    | 'pip';
   size?: number | string;
 }>();
 </script>
@@ -235,6 +239,29 @@ defineProps<{
       <line x1="12" y1="20" x2="12" y2="22" />
       <line x1="20" y1="12" x2="22" y2="12" />
       <line x1="2" y1="12" x2="4" y2="12" />
+    </template>
+
+    <!-- 闪电 (快进/高潮) -->
+    <template v-else-if="name === 'zap'">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </template>
+
+    <!-- 火焰 (热门/副歌高潮) -->
+    <template v-else-if="name === 'flame'">
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </template>
+
+    <!-- 下载 -->
+    <template v-else-if="name === 'download'">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </template>
+
+    <!-- 画中画 / 桌面歌词 -->
+    <template v-else-if="name === 'pip'">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <rect x="12" y="10" width="8" height="8" rx="1" />
     </template>
   </svg>
 </template>

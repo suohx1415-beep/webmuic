@@ -42,6 +42,15 @@ cd services/qq && npm install && cd ../..
 node scripts/patch-qq-backend.mjs
 ```
 
+### Windows 移植版（仅需 Node.js + npm）
+
+若在 Windows 下使用，系统仅有 Node.js 与 npm（无需装 pnpm）：
+1. **双击 `install-windows.bat`**（或命令行运行 `npm run bootstrap`）：
+   - 自动通过 `npx pnpm` 一键安装所有依赖并自动打好补丁。
+2. **双击 `start-windows.bat`**（或命令行运行 `npm start`）：
+   - 一键拉起 4 个微服务并自动在浏览器中打开 `http://127.0.0.1:5173`。
+   - 控制台内按 `Ctrl + C` 会自动调用 `taskkill /T /F` 强制终止全部子孙进程，避免 Windows 下端口死锁。
+
 ### 为什么 QQ 后端必须打补丁
 
 Phase 0 实测（2026-09）发现上游原始实现无法满足本项目前提：

@@ -8,7 +8,7 @@
  *
  * 用项目内 Node 20 启动，不依赖系统 Node 版本。
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -21,7 +21,8 @@ const logsDir = path.join(root, '.logs');
 function resolveNode() {
   const bundled = path.join(root, '.tools', 'node20', 'bin', 'node');
   if (fs.existsSync(bundled)) return bundled;
-  console.warn('[dev] 未找到 .tools/node20，回退到当前 Node：', process.execPath);
+  const bundledWin = path.join(root, '.tools', 'node20', 'node.exe');
+  if (fs.existsSync(bundledWin)) return bundledWin;
   return process.execPath;
 }
 
@@ -104,6 +105,7 @@ function isPortInUse(port) {
 
 function waitForPort(port, timeoutMs, child) {
   const deadline = Date.now() + timeoutMs;
+  let interval = 40;
   return new Promise((resolve, reject) => {
     let timer;
     const onExit = (code, signal) => {
@@ -121,7 +123,8 @@ function waitForPort(port, timeoutMs, child) {
           if (child) child.removeListener('exit', onExit);
           reject(new Error(`端口 ${port} 在 ${timeoutMs}ms 内没有就绪`));
         } else {
-          timer = setTimeout(attempt, 300);
+          interval = Math.min(200, interval + 20);
+          timer = setTimeout(attempt, interval);
         }
       });
     };
@@ -171,17 +174,21 @@ async function shutdown(reasonCode = 0) {
   console.log('\n[dev] 正在停止所有进程…');
   for (const { child } of children) {
     try {
-      if (process.platform !== 'win32' && child.pid) {
+      if (process.platform === 'win32' && child.pid) {
+        spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      } else if (process.platform !== 'win32' && child.pid) {
         process.kill(-child.pid, 'SIGTERM');
       } else if (!child.killed) {
         child.kill('SIGTERM');
       }
     } catch {}
   }
-  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await new Promise((resolve) => setTimeout(resolve, 800));
   for (const { child } of children) {
     try {
-      if (process.platform !== 'win32' && child.pid) {
+      if (process.platform === 'win32' && child.pid) {
+        spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      } else if (process.platform !== 'win32' && child.pid) {
         process.kill(-child.pid, 'SIGKILL');
       } else if (!child.killed && child.exitCode === null) {
         child.kill('SIGKILL');
@@ -195,51 +202,102 @@ async function shutdown(reasonCode = 0) {
 async function main() {
   fs.mkdirSync(logsDir, { recursive: true });
 
-  // 先检查端口占用，避免出现"以为起来了其实连着旧进程"的假象
-  const busy = [];
-  for (const service of services) {
-    if (await isPortInUse(service.port)) busy.push(`${service.name} (${service.port})`);
-  }
+  // 并发检查端口占用，缩短启动前探测延迟
+  const busyChecks = await Promise.all(
+    services.map(async (service) => ((await isPortInUse(service.port)) ? `${service.name} (${service.port})` : null)),
+  );
+  const busy = busyChecks.filter(Boolean);
   if (busy.length > 0) {
     console.error(`[dev] 以下端口已被占用：${busy.join('、')}`);
-    console.error('[dev] 请先停掉旧进程（ss -ltnp | grep <端口> 查 PID）后重试。');
+    if (process.platform === 'win32') {
+      console.error('[dev] 请先停掉旧进程（任务管理器关闭 node.exe 或执行 taskkill /IM node.exe /F）后重试。');
+    } else {
+      console.error('[dev] 请先停掉旧进程（ss -ltnp | grep <端口> 查 PID）后重试。');
+    }
     process.exit(1);
   }
 
-  if (!fs.existsSync(path.join(root, 'services', 'qq', '.webmuic-patched'))) {
-    console.warn('[dev] 提示：services/qq 似乎还没有打补丁，cookie 转发与搜索路由可能不可用。');
-    console.warn('[dev] 建议先执行：node scripts/patch-qq-backend.mjs');
+  const qqDir = path.join(root, 'services', 'qq');
+  const qqPatchedFile = path.join(qqDir, '.webmuic-patched');
+  const patchScript = path.join(root, 'scripts', 'patch-qq-backend.mjs');
+  let needPatch = false;
+
+  if (fs.existsSync(qqDir)) {
+    if (!fs.existsSync(qqPatchedFile)) {
+      needPatch = true;
+    } else {
+      try {
+        const { createHash } = await import('node:crypto');
+        const scriptHash = createHash('sha256').update(fs.readFileSync(patchScript)).digest('hex').slice(0, 16);
+        const markerContent = fs.readFileSync(qqPatchedFile, 'utf8');
+        if (!markerContent.includes(`scriptHash=${scriptHash}`)) {
+          console.log('[dev] 检测到 QQ 补丁脚本已更新，准备重新应用补丁…');
+          needPatch = true;
+        }
+      } catch {}
+    }
   }
+
+  if (needPatch) {
+    console.log('[dev] 正在自动应用 QQ 后端补丁…');
+    try {
+      const patchRes = spawnSync(NODE, [patchScript], { stdio: 'inherit' });
+      if (patchRes.status !== 0) {
+        console.error('[dev] 自动补丁执行失败，请检查 scripts/patch-qq-backend.mjs');
+        process.exit(1);
+      }
+    } catch (e) {
+      console.error('[dev] 执行补丁出错：', e.message);
+      process.exit(1);
+    }
+  }
+
   if (!fs.existsSync(path.join(root, 'apps', 'gateway', '.env.local'))) {
     console.warn('[dev] 提示：apps/gateway/.env.local 不存在，将以匿名身份运行（会员曲不可播）。');
     console.warn('[dev] 可以在前端「设置」页扫码/粘贴 cookie，网关会自动创建这个文件。');
   }
 
-  for (const service of services) {
-    try {
-      const child = startService(service);
-      await waitForPort(service.port, 60_000, child);
-      console.log(`[dev] ${service.name.padEnd(8)} 就绪  http://127.0.0.1:${service.port}`);
-    } catch (error) {
-      console.error(`\n[dev] 启动 ${service.name} 失败：${error.message}`);
-      if (service.hint) console.error(`[dev] 提示：${service.hint}`);
-      const logFile = path.join(logsDir, `${service.name}.log`);
-      if (fs.existsSync(logFile)) {
-        const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-25).join('\n');
-        console.error(`[dev] ${service.name} 日志尾部：\n${tail}`);
+  console.log('[dev] 正在并发启动微服务集群…');
+  await Promise.all(
+    services.map(async (service) => {
+      try {
+        const child = startService(service);
+        await waitForPort(service.port, 60_000, child);
+        console.log(`[dev] ${service.name.padEnd(8)} 就绪  http://127.0.0.1:${service.port}`);
+      } catch (error) {
+        console.error(`\n[dev] 启动 ${service.name} 失败：${error.message}`);
+        if (service.hint) console.error(`[dev] 提示：${service.hint}`);
+        const logFile = path.join(logsDir, `${service.name}.log`);
+        if (fs.existsSync(logFile)) {
+          const tail = fs.readFileSync(logFile, 'utf8').split('\n').slice(-25).join('\n');
+          console.error(`[dev] ${service.name} 日志尾部：\n${tail}`);
+        }
+        await shutdown(1);
       }
-      await shutdown(1);
-      return;
-    }
-  }
+    }),
+  );
 
   console.log('\n[dev] 全部就绪 —— 打开 http://127.0.0.1:5173');
   console.log(`[dev] 各进程日志：${logsDir}`);
   console.log('[dev] 按 Ctrl+C 停止全部进程\n');
+
+  if (process.argv.includes('--open') || process.env.WEBMUIC_OPEN === '1') {
+    const url = 'http://127.0.0.1:5173';
+    try {
+      if (process.platform === 'win32') {
+        spawn('cmd.exe', ['/c', 'start', '', url], { stdio: 'ignore' });
+      } else if (process.platform === 'darwin') {
+        spawn('open', [url], { stdio: 'ignore' });
+      } else {
+        spawn('xdg-open', [url], { stdio: 'ignore' });
+      }
+    } catch {}
+  }
 }
 
-process.on('SIGINT', () => void shutdown(0));
-process.on('SIGTERM', () => void shutdown(0));
+['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'].forEach((signal) => {
+  process.on(signal, () => void shutdown(0));
+});
 
 main().catch(async (error) => {
   console.error('[dev] 未捕获的错误：', error);

@@ -2,6 +2,7 @@ import type {
   CredentialStatus,
   HealthResponse,
   LyricResponse,
+  Platform,
   PlaylistResponse,
   QrCheckResponse,
   QrSession,
@@ -97,6 +98,14 @@ export const api = {
     request<import('./types').ChorusResponse>(`/api/track/${encodeURIComponent(id)}/chorus`),
 
   lyric: (id: string) => request<LyricResponse>(`/api/track/${encodeURIComponent(id)}/lyric`),
+
+  matchTrack: (id: string) =>
+    request<{
+      source: Track;
+      targetPlatform: Platform;
+      matches: Array<{ track: Track; score: number }>;
+      bestMatch: Track | null;
+    }>(`/api/track/${encodeURIComponent(id)}/match`),
 
   playlist: (id: string) => request<PlaylistResponse>(`/api/playlist/${encodeURIComponent(id)}`),
 

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '@/components/Icon.vue';
 import LyricDrawer from '@/components/LyricDrawer.vue';
 import PlayerBar from '@/components/PlayerBar.vue';
 import QueueDrawer from '@/components/QueueDrawer.vue';
 import { useAudio } from '@/composables/useAudio';
+import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
+import { useMediaSession } from '@/composables/useMediaSession';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
@@ -12,12 +14,42 @@ import { useSettingsStore } from '@/stores/settings';
 const player = usePlayerStore();
 const auth = useAuthStore();
 const settings = useSettingsStore();
-const { errorText, bind, toggle, seek } = useAudio();
+const { errorText, bind, toggle, seek, switchSource } = useAudio();
 
 const queueOpen = ref(false);
 const lyricOpen = ref(false);
 const toast = ref('');
 let toastTimer: number | undefined;
+let listeningTrigger: HTMLElement | null = null;
+
+watch(lyricOpen, async (open) => {
+  if (open) {
+    listeningTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    await nextTick();
+    document.getElementById('close-listening')?.focus();
+  } else {
+    await nextTick();
+    listeningTrigger?.focus();
+  }
+});
+
+// 启用系统锁屏 / 媒体控制与全局快捷键
+useMediaSession({ toggle, seek });
+useKeyboardShortcuts({
+  togglePlay: toggle,
+  seek,
+  toggleLyric: () => {
+    lyricOpen.value = !lyricOpen.value;
+  },
+  closeDrawers: () => {
+    lyricOpen.value = false;
+    queueOpen.value = false;
+  },
+});
+
+onBeforeUnmount(() => {
+  clearTimeout(toastTimer);
+});
 
 function showToast(message: string): void {
   toast.value = message;
@@ -39,9 +71,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'is-listening': lyricOpen }">
     <!-- 侧边导航栏 -->
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="主导航" :inert="lyricOpen">
       <div class="brand-wrapper">
         <div class="brand-logo">
           <Icon name="music" size="18" />
@@ -105,12 +137,12 @@ onMounted(async () => {
     </nav>
 
     <!-- 主展示区 -->
-    <main class="main">
+    <main class="main" :inert="lyricOpen">
       <!-- 平台离线告警 -->
       <div v-if="banners.length" class="notice warn">
         <div>
           <div v-for="line in banners" :key="line" style="font-weight: 500">{{ line }}</div>
-          <div class="small muted" style="margin-top: 2px">离线平台的曲目会自动跳过，其余平台正常可用。可在设置页检查状态。</div>
+          <div class="small muted" style="margin-top: 2px">可切换至其他平台，或在设置页检查连接状态。</div>
         </div>
       </div>
 
@@ -130,7 +162,7 @@ onMounted(async () => {
 
     <!-- 抽屉背景遮罩 -->
     <div
-      v-if="queueOpen || lyricOpen"
+      v-if="queueOpen"
       class="drawer-backdrop"
       @click="queueOpen = false; lyricOpen = false"
     />
@@ -141,6 +173,7 @@ onMounted(async () => {
       :lyric-open="lyricOpen"
       @toggle="toggle"
       @seek="seek"
+      @switch-source="switchSource"
       @open-queue="queueOpen = !queueOpen; if (queueOpen) lyricOpen = false;"
       @open-lyric="lyricOpen = !lyricOpen; if (lyricOpen) queueOpen = false;"
     />

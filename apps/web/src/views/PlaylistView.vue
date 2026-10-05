@@ -108,7 +108,7 @@ onMounted(() => {
           class="manual-input"
         />
       </div>
-      <button type="submit" class="open-btn" :disabled="!manualId.trim() || loading">
+      <button type="submit" class="primary open-btn" :disabled="!manualId.trim() || loading">
         打开解析
       </button>
     </form>
@@ -137,7 +137,7 @@ onMounted(() => {
         <Icon :name="data.isAlbum ? 'album' : 'queue'" size="44" />
       </div>
       <div class="playlist-meta-info">
-        <div class="row" style="gap: 8px; margin-bottom: 6px">
+        <div class="row" style="gap: 8px; margin-bottom: 8px">
           <PlatformBadge :platform="data.platform" />
           <span class="playlist-tag">{{ data.isAlbum ? '专辑' : '歌单' }}</span>
           <span v-if="data.creator" class="creator-name-tag">{{ data.creator }}</span>
@@ -148,21 +148,21 @@ onMounted(() => {
           <span v-if="data.id" class="meta-dot">·</span>
           <span v-if="data.id" class="mono-id">{{ data.id }}</span>
         </div>
-        <div class="row" style="gap: 10px; margin-top: 16px">
-          <button class="primary hero-action-btn" @click="playAll">
-            <Icon name="play" size="15" />
+        <div class="row" style="gap: 12px; margin-top: 18px">
+          <button class="hero-action-btn primary" @click="playAll">
+            <Icon name="play" size="16" />
             <span>播放全部</span>
           </button>
-          <button class="hero-action-btn" @click="enqueueAll">
-            <Icon name="plus" size="15" />
+          <button class="hero-action-btn secondary" @click="enqueueAll">
+            <Icon name="plus" size="16" />
             <span>追加至队列</span>
           </button>
           <button
-            class="hero-action-btn"
+            class="hero-action-btn secondary"
             :class="{ favorited: favorites.hasPlaylist(data.id) }"
             @click="toggleFavorite"
           >
-            <Icon name="heart" size="15" />
+            <Icon :name="favorites.hasPlaylist(data.id) ? 'heart-filled' : 'heart'" size="16" />
             <span>{{ favorites.hasPlaylist(data.id) ? '已收藏' : '收藏' }}</span>
           </button>
         </div>
@@ -178,8 +178,15 @@ onMounted(() => {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: 14px 18px;
+  padding: 10px 14px;
   margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.playlist-search-card:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .input-with-icon {
@@ -197,15 +204,25 @@ onMounted(() => {
 }
 
 .manual-input {
-  padding-left: 38px;
+  padding-left: 36px;
   height: 38px;
-  background: var(--bg-canvas);
+  background: transparent;
+  border: none;
   font-size: 13.5px;
+  width: 100%;
+}
+
+.manual-input:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .open-btn {
-  height: 38px;
-  padding: 0 16px;
+  height: 36px;
+  padding: 0 18px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
@@ -216,17 +233,29 @@ onMounted(() => {
   padding: 24px;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   margin-bottom: 24px;
   box-shadow: var(--shadow-sm);
 }
 
 .playlist-cover {
-  width: 120px;
-  height: 120px;
-  border-radius: var(--radius-sm);
+  width: 130px;
+  height: 130px;
+  border-radius: var(--radius-md);
   object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  flex-shrink: 0;
+}
+
+.playlist-cover-placeholder {
+  width: 130px;
+  height: 130px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -237,30 +266,39 @@ onMounted(() => {
 
 .playlist-tag {
   font-size: 11px;
-  color: var(--text-tertiary);
-  padding: 1px 6px;
-  border-radius: var(--radius-xs);
-  background: rgba(255, 255, 255, 0.05);
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.creator-name-tag {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 4px;
 }
 
 .playlist-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   margin: 0 0 8px;
   color: var(--text-primary);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
 }
 
 .playlist-stats {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-tertiary);
 }
 
 .mono-id {
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
   opacity: 0.7;
 }
@@ -270,8 +308,47 @@ onMounted(() => {
 }
 
 .hero-action-btn {
-  padding: 8px 18px;
-  font-size: 13px;
+  height: 38px;
+  padding: 0 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.hero-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.hero-action-btn.primary {
+  background: linear-gradient(135deg, #ff4d6e, var(--accent));
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.hero-action-btn.primary:hover {
+  box-shadow: 0 6px 18px rgba(255, 45, 85, 0.35);
+}
+
+.hero-action-btn.secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.hero-action-btn.secondary:hover {
+  background: var(--bg-elevated-hover);
+}
+
+.hero-action-btn.favorited {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
 .spin-icon {

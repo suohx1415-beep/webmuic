@@ -12,6 +12,7 @@ process.env.NETEASE_BASE = 'http://127.0.0.1:59991';
 process.env.QQ_BASE = 'http://127.0.0.1:59992';
 
 const { createApp } = await import('../src/app.js');
+const { calculateMatchScore } = await import('../src/routes/track.js');
 
 /** 断言用的宽松 JSON 读取：契约字段在测试里逐个显式断言 */
 async function json(res: Response): Promise<Record<string, any>> {
@@ -154,6 +155,27 @@ describe('网关 HTTP 契约', () => {
     expect(res.status).toBe(400);
     const body = await json(res);
     expect(body.error.code).toBe('BAD_REQUEST');
+  });
+
+  it('calculateMatchScore 能准确为同名同歌手跨平台歌曲打高分', () => {
+    const source: any = {
+      title: '七里香 (Live)',
+      artists: [{ name: '周杰伦' }],
+      durationMs: 300000,
+    };
+    const exactMatch: any = {
+      title: '七里香',
+      artists: [{ name: '周杰伦' }],
+      durationMs: 301000,
+    };
+    const wrongSong: any = {
+      title: '晴天',
+      artists: [{ name: '周杰伦' }],
+      durationMs: 270000,
+    };
+
+    expect(calculateMatchScore(source, exactMatch)).toBeGreaterThanOrEqual(95);
+    expect(calculateMatchScore(source, wrongSong)).toBe(0);
   });
 });
 
