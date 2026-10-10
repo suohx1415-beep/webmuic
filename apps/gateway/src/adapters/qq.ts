@@ -79,6 +79,11 @@ function emptyEnvelope(body: unknown, where: string): ApiEnvelope {
     throw err.upstreamShape('qq', `${where} 返回的不是对象`);
   }
   const envelope = body as ApiEnvelope;
+  // QQ 后端自己访问 QQ 音乐失败（网络/TLS/代理）时返回 { error: { message } }，这不是结构问题
+  const upstreamError = (body as { error?: { message?: unknown } }).error;
+  if (upstreamError && typeof upstreamError.message === 'string') {
+    throw err.upstreamUnavailable('qq', `QQ 后端访问 QQ 音乐失败（${where}）：${upstreamError.message}`);
+  }
   if (!envelope.response && !envelope.data && typeof envelope.code !== 'number') {
     throw err.upstreamShape('qq', `${where} 缺少 response/data 字段`);
   }

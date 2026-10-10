@@ -35,7 +35,7 @@ searchRouter.get(
       if (result.ok.length === 0) {
         const first = platforms[0] as Platform;
         const failure = result.failed[first];
-        throw err.upstreamUnavailable(first, failure?.message ?? '歌单搜索失败');
+        throw err.allPlatformsFailed(first, failure?.message, '歌单搜索失败');
       }
       const degradedPlatforms = platforms.filter((p) => !result.ok.includes(p));
       const degraded: DegradedInfo | undefined = degradedPlatforms.length
@@ -65,7 +65,7 @@ searchRouter.get(
       if (result.ok.length === 0) {
         const first = platforms[0] as Platform;
         const failure = result.failed[first];
-        throw err.upstreamUnavailable(first, failure?.message ?? '专辑搜索失败');
+        throw err.allPlatformsFailed(first, failure?.message, '专辑搜索失败');
       }
       const degradedPlatforms = platforms.filter((p) => !result.ok.includes(p));
       const degraded: DegradedInfo | undefined = degradedPlatforms.length
@@ -96,7 +96,7 @@ searchRouter.get(
       // 两个平台都挂了：直接把第一个错误抛出去，让前端看到真实原因
       const first = platforms[0] as Platform;
       const failure = result.failed[first];
-      throw err.upstreamUnavailable(first, failure?.message ?? '搜索失败');
+      throw err.allPlatformsFailed(first, failure?.message, '搜索失败');
     }
 
     const degradedPlatforms = platforms.filter((p) => !result.ok.includes(p));

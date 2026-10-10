@@ -55,6 +55,11 @@ export const err = {
     ),
   urlUnavailable: (platform: Platform) =>
     new GatewayError(410, 'URL_UNAVAILABLE', urlUnavailableMessage(platform), platform),
+  /** 所有平台都失败时转抛首个平台的错误；底层消息已是完整句子，不再叠加「后端不可达」前缀 */
+  allPlatformsFailed: (platform: Platform, message: string | undefined, fallback: string) =>
+    message
+      ? new GatewayError(502, 'UPSTREAM_UNAVAILABLE', message, platform)
+      : new GatewayError(502, 'UPSTREAM_UNAVAILABLE', `${platform} 后端不可达：${fallback}`, platform),
   upstreamShape: (platform: Platform, detail: string) =>
     new GatewayError(502, 'UPSTREAM_BAD_SHAPE', `${platform} 返回结构不符合预期：${detail}`, platform),
 } as const;

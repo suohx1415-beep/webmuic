@@ -186,6 +186,14 @@ describe('QQ 适配器', () => {
     });
   });
 
+  it('QQ 后端自身请求上游失败时报 UPSTREAM_UNAVAILABLE 并带上原始原因', async () => {
+    handler = () => jsonResponse({ error: { name: 'Error', message: 'TLS 握手失败' } }, 500);
+    await expect(qqAdapter.search('x', { limit: 1, offset: 0 })).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE',
+      message: expect.stringContaining('TLS 握手失败'),
+    });
+  });
+
   it('上游返回 HTML（非 JSON）时报 UPSTREAM_BAD_SHAPE', async () => {
     handler = () => new Response('<html>502 Bad Gateway</html>', { status: 200 });
     await expect(qqAdapter.search('x', { limit: 1, offset: 0 })).rejects.toMatchObject({

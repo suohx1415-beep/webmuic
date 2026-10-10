@@ -110,7 +110,7 @@ recommendRouter.get(
 
     if (sections.length === 0) {
       const first = platforms[0] as Platform;
-      throw err.upstreamUnavailable(first, reasons[first] ?? '推荐不可用');
+      throw err.allPlatformsFailed(first, reasons[first], '推荐不可用');
     }
 
     const degraded: DegradedInfo | undefined = failed.length ? { platforms: failed, reasons } : undefined;
