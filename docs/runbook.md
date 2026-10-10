@@ -28,7 +28,7 @@
 ## 首次准备
 
 ```bash
-cd /home/suohx/桌面/webmuic
+cd <仓库根目录>
 
 # 1. 依赖（workspace 一把装完：gateway / web / services/netease）
 pnpm install
@@ -71,7 +71,7 @@ Phase 0 实测（2026-09）发现上游原始实现无法满足本项目前提�
 ## 日常启动
 
 ```bash
-cd /home/suohx/桌面/webmuic
+cd <仓库根目录>
 node scripts/dev-all.mjs
 ```
 
@@ -86,7 +86,7 @@ node scripts/dev-all.mjs
 cd services/netease && PORT=3010 HOST=127.0.0.1 ../../.tools/node20/bin/node node_modules/NeteaseCloudMusicApi/app.js
 
 # QQ 后端
-cd services/qq && PORT=3200 QQ_COOKIE_FILE=/home/suohx/桌面/webmuic/apps/gateway/.qq-cookie.txt \
+cd services/qq && PORT=3200 QQ_COOKIE_FILE="$PWD/../../apps/gateway/.qq-cookie.txt" \
   ../../.tools/node20/bin/node -r ts-node/register/transpile-only src/app.ts
 
 # 网关
