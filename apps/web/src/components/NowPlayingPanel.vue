@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import Icon from '@/components/Icon.vue';
-import { artistNames, formatTime } from '@/format';
+import { artistNames, formatTime, thumb } from '@/format';
 import { usePlayerStore } from '@/stores/player';
 import { useFavoritesStore } from '@/stores/favorites';
 
@@ -19,7 +19,7 @@ const upcoming = computed(() => player.queue.slice(player.index + 1, player.inde
   <aside v-if="player.current" class="now-panel" aria-label="正在播放">
     <header><h2>正在播放</h2><button class="ghost" aria-label="打开播放队列" @click="emit('openQueue')"><Icon name="queue" size="17" /></button></header>
     <button class="now-cover" aria-label="展开歌词" @click="emit('openLyric')">
-      <img v-if="player.current.album.coverUrl" :src="player.current.album.coverUrl" :alt="player.current.album.name || player.current.title">
+      <img v-if="player.current.album.coverUrl" :src="thumb(player.current.album.coverUrl, 600)" :alt="player.current.album.name || player.current.title">
       <Icon v-else name="music" size="64" />
     </button>
     <div class="now-heading">
@@ -36,7 +36,7 @@ const upcoming = computed(() => player.queue.slice(player.index + 1, player.inde
     <template v-if="upcoming.length">
       <header class="up-next"><h2>接下来播放</h2><button class="ghost" @click="emit('openQueue')">{{ player.queue.length }} 首</button></header>
       <button v-for="(track, offset) in upcoming" :key="track.id" class="next-track" @click="player.playAt(player.index + offset + 1)">
-        <img v-if="track.album.coverUrl" :src="track.album.coverUrl" alt="" loading="lazy">
+        <img v-if="track.album.coverUrl" :src="thumb(track.album.coverUrl, 80)" alt="" loading="lazy">
         <span v-else class="next-placeholder"><Icon name="music" size="18" /></span>
         <span class="next-meta"><strong>{{ track.title }}</strong><span>{{ artistNames(track) }}</span></span>
         <time>{{ formatTime(track.durationMs / 1000) }}</time>

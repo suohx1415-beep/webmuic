@@ -35,3 +35,11 @@ export function qualityHint(track: Track): string {
   const best = track.qualities[track.qualities.length - 1];
   return best ? QUALITY_LABELS[best.level] : '';
 }
+
+/** 网易云封面默认是原图（可达近 1MB），按显示尺寸请求缩略图；其他来源原样返回。 */
+export function thumb(url: string | undefined, px: number): string {
+  if (!url) return '';
+  if (!/(^|\.)music\.126\.net\//.test(url.replace(/^https?:\/\//, ''))) return url;
+  const base = url.replace(/[?#].*$/, '');
+  return `${base}?param=${px}y${px}`;
+}

@@ -6,7 +6,7 @@ import type { PlaylistCard, UserLibraryResponse } from '@/api/types';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
 import TrackList from '@/components/TrackList.vue';
-import { formatTime } from '@/format';
+import { formatTime, thumb } from '@/format';
 import { useAuthStore } from '@/stores/auth';
 import { useFavoritesStore, type SavedPlaylistItem } from '@/stores/favorites';
 import { usePlayerStore } from '@/stores/player';
@@ -344,7 +344,7 @@ function goToSettings(): void {
             <div class="card-cover-wrapper" @click="openDetail(item.id)">
               <img
                 v-if="item.coverUrl"
-                :src="item.coverUrl"
+                :src="thumb(item.coverUrl, 400)"
                 :alt="item.name"
                 class="card-cover-img"
                 loading="lazy"
@@ -401,7 +401,7 @@ function goToSettings(): void {
             <div class="card-cover-wrapper" @click="openDetail(item.id)">
               <img
                 v-if="item.coverUrl"
-                :src="item.coverUrl"
+                :src="thumb(item.coverUrl, 400)"
                 :alt="item.name"
                 class="card-cover-img"
                 loading="lazy"
@@ -603,7 +603,7 @@ function goToSettings(): void {
           <div class="card-cover-wrapper" @click="activeCustomPlaylistId = item.id">
             <img
               v-if="item.tracks[0]?.album.coverUrl"
-              :src="item.tracks[0].album.coverUrl"
+              :src="thumb(item.tracks[0].album.coverUrl, 400)"
               :alt="item.name"
               class="card-cover-img"
               loading="lazy"
@@ -672,7 +672,7 @@ function goToSettings(): void {
         <div class="card-cover-wrapper" @click="openDetail(item.id)">
           <img
             v-if="item.coverUrl"
-            :src="item.coverUrl"
+            :src="thumb(item.coverUrl, 400)"
             :alt="item.name"
             class="card-cover-img"
             loading="lazy"

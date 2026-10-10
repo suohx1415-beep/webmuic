@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
 import { useDesktopLyricPip } from '@/composables/useDesktopLyricPip';
-import { artistNames, formatTime } from '@/format';
+import { artistNames, formatTime, thumb } from '@/format';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -162,12 +162,12 @@ async function cacheCurrentTrack(): Promise<void> {
         <div
           v-if="player.current?.album.coverUrl"
           class="player-cover-glow"
-          :style="{ backgroundImage: `url(${player.current.album.coverUrl})` }"
+          :style="{ backgroundImage: `url(${thumb(player.current.album.coverUrl, 128)})` }"
         />
         <img
           v-if="player.current?.album.coverUrl"
           class="player-cover"
-          :src="player.current.album.coverUrl"
+          :src="thumb(player.current.album.coverUrl, 128)"
           :alt="`${player.current?.title ?? ''} 封面`"
         />
         <div v-else class="player-cover placeholder-disc">

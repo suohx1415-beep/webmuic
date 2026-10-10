@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { thumb } from '@/format';
 import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, ApiError } from '@/api/client';
@@ -129,7 +130,7 @@ onMounted(() => {
     <div class="playlist-hero-banner">
       <img
         v-if="data.coverUrl"
-        :src="data.coverUrl"
+        :src="thumb(data.coverUrl, 500)"
         :alt="data.name"
         class="playlist-cover"
       />

@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import type { Track } from '@/api/types';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
-import { artistNames, formatTime, qualityHint } from '@/format';
+import { artistNames, formatTime, qualityHint, thumb } from '@/format';
 import { useFavoritesStore } from '@/stores/favorites';
 import { usePlayerStore } from '@/stores/player';
 
@@ -67,7 +67,7 @@ function toggleFavorite(track: Track): void {
 
       <!-- 封面与悬浮试听入口 -->
       <button class="cover-wrapper" :aria-label="`播放 ${track.title}`" @click.stop="play(track)">
-        <img v-if="track.album.coverUrl" class="cover" :src="track.album.coverUrl" alt="" loading="lazy" />
+        <img v-if="track.album.coverUrl" class="cover" :src="thumb(track.album.coverUrl, 96)" alt="" loading="lazy" />
         <div v-else class="cover cover-placeholder">
           <Icon name="music" size="16" />
         </div>

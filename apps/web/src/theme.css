@@ -6,8 +6,9 @@
   --sidebar-width: 216px;
   --player-height: 96px;
 
-  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-serif: 'Lora', 'Noto Serif SC', 'Songti SC', Georgia, serif;
+  --font-sans: 'Noto Sans SC', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  /* 中文衬线只用本机字体：远程加载思源宋体要下载几十个分片，严重拖慢首屏 */
+  --font-serif: 'Lora', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
 
   --bg-canvas: #faf9f5;
   --bg-sidebar: #f2efe6;

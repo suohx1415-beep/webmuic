@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { thumb } from '@/format';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { hasMoreSearchResults } from '@/api/searchPage';
 import { useRoute, useRouter } from 'vue-router';
@@ -405,7 +406,7 @@ function openCollectionDetail(id: string): void {
       <div class="card-cover-wrapper" @click="openCollectionDetail(item.id)">
         <img
           v-if="item.coverUrl"
-          :src="item.coverUrl"
+          :src="thumb(item.coverUrl, 400)"
           :alt="item.name"
           class="card-cover-img"
           loading="lazy"
@@ -468,7 +469,7 @@ function openCollectionDetail(id: string): void {
       <div class="card-cover-wrapper" @click="openCollectionDetail(item.id)">
         <img
           v-if="item.coverUrl"
-          :src="item.coverUrl"
+          :src="thumb(item.coverUrl, 400)"
           :alt="item.name"
           class="card-cover-img"
           loading="lazy"

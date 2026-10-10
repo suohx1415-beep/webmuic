@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { thumb } from '@/format';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AudioFxDrawer from '@/components/AudioFxDrawer.vue';
 import Icon from '@/components/Icon.vue';
@@ -114,7 +115,7 @@ onMounted(async () => {
       <div v-if="favorites.playlists.length" class="sidebar-library">
         <div class="nav-group-title">收藏的歌单</div>
         <RouterLink v-for="item in favorites.playlists.slice(0, 5)" :key="item.id" :to="`/playlist/${item.id}`" class="library-link">
-          <img v-if="item.coverUrl" :src="item.coverUrl" alt="" loading="lazy">
+          <img v-if="item.coverUrl" :src="thumb(item.coverUrl, 64)" alt="" loading="lazy">
           <Icon v-else name="music" size="24" />
           <span>{{ item.name }}</span>
         </RouterLink>

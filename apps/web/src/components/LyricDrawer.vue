@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
-import { artistNames, formatTime } from '@/format';
+import { artistNames, formatTime, thumb } from '@/format';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -14,7 +14,7 @@ const listRef = ref<HTMLElement | null>(null);
 const isUserScrolling = ref(false);
 const coverFailed = ref(false);
 let resumeTimer: number | undefined;
-const cover = computed(() => coverFailed.value ? '' : player.current?.album.coverUrl ?? '');
+const cover = computed(() => coverFailed.value ? '' : thumb(player.current?.album.coverUrl, 800));
 
 const chorusLineIndex = computed(() => {
   const chorus = player.current?.chorus;
