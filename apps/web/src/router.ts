@@ -7,12 +7,12 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/search' },
+    { path: '/', redirect: '/discover' },
     { path: '/search', name: 'search', component: () => import('@/views/SearchView.vue') },
     { path: '/discover', name: 'discover', component: () => import('@/views/DiscoverView.vue') },
     { path: '/playlist/:id', name: 'playlist', component: () => import('@/views/PlaylistView.vue') },
     { path: '/favorites', name: 'favorites', component: () => import('@/views/FavoritesView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
-    { path: '/:pathMatch(.*)*', redirect: '/search' },
+    { path: '/:pathMatch(.*)*', redirect: '/discover' },
   ],
 });

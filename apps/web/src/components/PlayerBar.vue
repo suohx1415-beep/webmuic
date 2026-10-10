@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/stores/settings';
 const props = defineProps<{
   queueOpen: boolean;
   lyricOpen: boolean;
+  eqOpen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -17,7 +18,9 @@ const emit = defineEmits<{
   seek: [seconds: number];
   openQueue: [];
   openLyric: [];
+  openEq: [];
   switchSource: [];
+  notify: [message: string];
 }>();
 
 const player = usePlayerStore();
@@ -120,6 +123,34 @@ function downloadCurrentTrack(): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
+import { offlineStorage } from '@/offlineStorage';
+
+const isCaching = ref(false);
+const moreOpen = ref(false);
+
+async function cacheCurrentTrack(): Promise<void> {
+  const track = player.current;
+  if (!track || isCaching.value) return;
+  isCaching.value = true;
+  try {
+    const isAlready = await offlineStorage.hasTrack(track.id);
+    if (isAlready) {
+      await offlineStorage.removeTrack(track.id);
+      emit('notify', `已移除《${track.title}》的离线缓存`);
+      return;
+    }
+    emit('notify', `正在离线缓存《${track.title}》…`);
+    const streamRes = await fetch(`/api/stream/${encodeURIComponent(track.id)}?quality=${settings.quality}`);
+    if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
+    const blob = await streamRes.blob();
+    await offlineStorage.saveTrack(track, blob, settings.quality);
+    emit('notify', `《${track.title}》已成功缓存至本地，断网亦可秒播！`);
+  } catch (e) {
+    emit('notify', `离线缓存失败：${e instanceof Error ? e.message : '网络异常'}`);
+  } finally {
+    isCaching.value = false;
+  }
 }
 </script>
 
@@ -326,6 +357,27 @@ function downloadCurrentTrack(): void {
       </button>
 
       <button
+        class="transport-btn eq-toggle"
+        :class="{ active: props.eqOpen }"
+        style="width: 28px; height: 28px"
+        title="打开专业音频均衡器 (EQ)"
+        @click="emit('openEq')"
+      >
+        <Icon name="sliders" size="16" />
+      </button>
+
+      <button
+        v-if="player.current"
+        class="transport-btn"
+        :disabled="isCaching"
+        style="width: 28px; height: 28px"
+        title="离线缓存 / 移除离线文件"
+        @click="cacheCurrentTrack"
+      >
+        <Icon name="offline" size="16" />
+      </button>
+
+      <button
         v-if="player.current"
         class="transport-btn"
         style="width: 28px; height: 28px"
@@ -344,11 +396,24 @@ function downloadCurrentTrack(): void {
       >
         <Icon name="refresh" size="16" />
       </button>
+      <button class="transport-btn more-toggle" aria-label="更多播放操作" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">•••</button>
+      <div v-if="moreOpen" class="player-more" @keydown.esc="moreOpen = false">
+        <button :disabled="!player.current || isCaching" @click="cacheCurrentTrack(); moreOpen = false"><Icon name="offline" size="16" />离线缓存</button>
+        <button :disabled="!player.current" @click="downloadCurrentTrack(); moreOpen = false"><Icon name="download" size="16" />下载音频</button>
+        <button :disabled="!player.current" @click="emit('switchSource'); moreOpen = false"><Icon name="refresh" size="16" />切换来源</button>
+        <button v-if="isPipSupported" @click="togglePip(); moreOpen = false"><Icon name="pip" size="16" />桌面歌词</button>
+        <button @click="settings.muted = !settings.muted">{{ settings.muted ? '取消静音' : '静音' }}</button>
+        <button @click="moreOpen = false">收起</button>
+      </div>
     </div>
   </footer>
 </template>
 
 <style scoped>
+.more-toggle { display: none; }
+.player-more { position: absolute; bottom: calc(100% + 10px); right: 0; width: 170px; padding: 8px; border: 1px solid var(--border-default); background: var(--bg-surface); box-shadow: var(--shadow-lg); border-radius: 10px; display: flex; flex-direction: column; gap: 3px; }
+.player-more button { justify-content: flex-start; border: 0; background: transparent; padding: 10px; }
+@media (max-width: 768px) { .more-toggle { display: inline-flex; } }
 .player-cover-box {
   padding: 0;
   border: 0;
@@ -361,9 +426,9 @@ function downloadCurrentTrack(): void {
   z-index: 3;
   display: grid;
   place-items: center;
-  background: #0006;
+  background: #19191766;
   border-radius: inherit;
-  color: white;
+  color: #fffefb;
   opacity: 0;
   transition: opacity 160ms ease;
 }
@@ -392,7 +457,7 @@ function downloadCurrentTrack(): void {
   padding: 1px 4px;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 700;
 }
 
@@ -434,9 +499,9 @@ function downloadCurrentTrack(): void {
   border-radius: 999px;
   font-size: 11.5px;
   font-weight: 600;
-  color: #d97706;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
@@ -444,27 +509,17 @@ function downloadCurrentTrack(): void {
 }
 
 .chorus-badge-btn:hover {
-  background: rgba(245, 158, 11, 0.2);
-  border-color: rgba(245, 158, 11, 0.5);
+  background: var(--warn-soft);
+  border-color: var(--warn);
   transform: translateY(-1px);
 }
 
 .chorus-badge-btn.active {
-  color: #fff;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-color: #f59e0b;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.55);
-  animation: chorus-glow 2s infinite ease-in-out;
+  color: var(--on-accent);
+  background: var(--warn);
+  border-color: var(--warn);
 }
 
-@keyframes chorus-glow {
-  0%, 100% {
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 14px rgba(245, 158, 11, 0.9);
-  }
-}
 
 /* 进度条上的副歌高潮锚点 */
 .chorus-track-marker {
@@ -484,8 +539,8 @@ function downloadCurrentTrack(): void {
   width: 4px;
   height: 10px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #fde68a, #f59e0b);
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg-surface);
   transition: all 0.15s ease;
 }
 
@@ -493,25 +548,14 @@ function downloadCurrentTrack(): void {
 .chorus-track-marker:hover .chorus-track-marker-pin {
   height: 14px;
   width: 5px;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.9);
+  box-shadow: 0 0 0 2px var(--bg-surface);
 }
 
 .chorus-track-marker.active .chorus-track-marker-pin {
-  background: linear-gradient(180deg, #ffffff, #fbbf24);
-  box-shadow: 0 0 12px rgba(251, 191, 36, 1);
-  animation: chorus-pin-pulse 1.2s infinite alternate ease-in-out;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg-surface);
 }
 
-@keyframes chorus-pin-pulse {
-  from {
-    transform: scaleY(1);
-    opacity: 0.85;
-  }
-  to {
-    transform: scaleY(1.3);
-    opacity: 1;
-  }
-}
 
 /* 悬浮气泡 */
 .chorus-tooltip {
@@ -521,16 +565,15 @@ function downloadCurrentTrack(): void {
   transform: translateX(-50%) translateY(4px);
   opacity: 0;
   pointer-events: none;
-  background: rgba(18, 18, 22, 0.92);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  color: #fef3c7;
+  background: var(--text-primary);
+  border: 0;
+  color: var(--bg-canvas);
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-md);
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   align-items: center;
@@ -544,7 +587,7 @@ function downloadCurrentTrack(): void {
   left: 50%;
   transform: translateX(-50%);
   border: 4px solid transparent;
-  border-top-color: rgba(18, 18, 22, 0.92);
+  border-top-color: var(--text-primary);
 }
 
 .chorus-track-marker:hover .chorus-tooltip {

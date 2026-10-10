@@ -11,18 +11,43 @@ import { useAuthStore } from '@/stores/auth';
 import { useFavoritesStore, type SavedPlaylistItem } from '@/stores/favorites';
 import { usePlayerStore } from '@/stores/player';
 
+import { offlineStorage, type CachedTrackRecord } from '@/offlineStorage';
+
 const emit = defineEmits<{ notify: [message: string] }>();
 const router = useRouter();
 const favorites = useFavoritesStore();
 const player = usePlayerStore();
 const auth = useAuthStore();
 
-type TabType = 'cloud' | 'local' | 'custom' | 'saved';
+type TabType = 'cloud' | 'local' | 'custom' | 'saved' | 'offline';
 const activeTab = ref<TabType>('cloud');
 
 const userLibrary = ref<UserLibraryResponse | null>(null);
 const libraryLoading = ref(false);
 const actionLoadingId = ref<string | null>(null);
+const cachedTracks = ref<CachedTrackRecord[]>([]);
+
+async function loadCachedTracks(): Promise<void> {
+  try {
+    cachedTracks.value = await offlineStorage.getAllCachedTracks();
+  } catch {
+    cachedTracks.value = [];
+  }
+}
+
+async function removeCachedTrack(trackId: string, title: string): Promise<void> {
+  await offlineStorage.removeTrack(trackId);
+  await loadCachedTracks();
+  emit('notify', `已移除《${title}》的本地离线缓存`);
+}
+
+function playAllOffline(): void {
+  if (cachedTracks.value.length === 0) return;
+  const list = cachedTracks.value.map((c) => c.track);
+  player.setQueue(list, 0);
+  player.playing = true;
+  emit('notify', `已开始离线播放 ${list.length} 首歌曲`);
+}
 
 // 自建歌单相关响应式状态
 const activeCustomPlaylistId = ref<string | null>(null);
@@ -148,10 +173,7 @@ function goToSettings(): void {
 
 <template>
   <div class="page-header">
-    <h1 class="page-title">我的音乐资产与收藏</h1>
-    <p class="page-sub">
-      聚合原网易云与 QQ 音乐账号中的红心音乐、自建歌单，以及本机专属离线单曲收藏。
-    </p>
+    <h1 class="page-title">我的收藏</h1>
   </div>
 
   <!-- 分类导航 Tab -->
@@ -188,6 +210,14 @@ function goToSettings(): void {
       <Icon name="queue" size="16" />
       <span>收藏的歌单与专辑 ({{ favorites.playlists.length }})</span>
     </button>
+    <button
+      class="fav-tab-btn"
+      :class="{ active: activeTab === 'offline' }"
+      @click="activeTab = 'offline'; void loadCachedTracks();"
+    >
+      <Icon name="offline" size="16" />
+      <span>离线缓存歌曲</span>
+    </button>
   </div>
 
   <!-- Tab 1: 云端红心与账号歌单 -->
@@ -207,7 +237,7 @@ function goToSettings(): void {
         </div>
         <div class="heart-card-body">
           <div class="heart-avatar">
-            <Icon name="heart-filled" size="36" style="color: #ff4b60" />
+            <Icon name="heart-filled" size="36" style="color: var(--netease)" />
           </div>
           <div class="heart-card-meta">
             <h3 class="heart-card-title">我喜欢的音乐</h3>
@@ -252,7 +282,7 @@ function goToSettings(): void {
         </div>
         <div class="heart-card-body">
           <div class="heart-avatar">
-            <Icon name="heart-filled" size="36" style="color: #10b981" />
+            <Icon name="heart-filled" size="36" style="color: var(--qq)" />
           </div>
           <div class="heart-card-meta">
             <h3 class="heart-card-title">我喜欢</h3>
@@ -294,7 +324,6 @@ function goToSettings(): void {
     <div class="section-container" style="margin-top: 32px">
       <div class="section-header">
         <h3 class="section-title">我的自建与云端歌单</h3>
-        <span class="muted small">点击卡片可查看完整歌单，或使用操作按钮即时加入队列播放。</span>
       </div>
 
       <div
@@ -433,10 +462,7 @@ function goToSettings(): void {
         <Icon name="heart-filled" size="32" />
       </div>
       <div class="favorites-info">
-        <h2 class="favorites-hero-title">本机专属收藏单曲</h2>
-        <p class="page-sub">
-          曲目数据仅保存在本机浏览器 LocalStorage 中，隐私绝不上云。
-        </p>
+        <h2 class="favorites-hero-title">喜欢的歌曲</h2>
         <div class="favorites-meta-row">
           <span>共 {{ favorites.tracks.length }} 首歌曲</span>
           <span class="meta-dot">·</span>
@@ -474,7 +500,7 @@ function goToSettings(): void {
     <!-- 详情状态：展示当前查看的自建歌单 -->
     <template v-if="activeCustomPlaylist">
       <div class="favorites-banner">
-        <div class="favorites-icon-badge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%)">
+        <div class="favorites-icon-badge" style="background: var(--qq-soft); color: var(--qq)">
           <Icon name="queue" size="32" />
         </div>
         <div class="favorites-info">
@@ -526,7 +552,6 @@ function goToSettings(): void {
       <div class="section-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center">
         <div>
           <h3 class="section-title">我的自建歌单</h3>
-          <span class="muted small">自由混排网易云与 QQ 音乐曲目，离线保存于本地。</span>
         </div>
         <div class="row" style="gap: 8px">
           <input
@@ -702,6 +727,37 @@ function goToSettings(): void {
       </div>
     </div>
   </div>
+
+  <!-- Tab 5: 离线缓存音乐 -->
+  <div v-else-if="activeTab === 'offline'" class="tab-content">
+    <div class="collection-header">
+      <div class="collection-title-box">
+        <h2>本地离线音乐</h2>
+      </div>
+      <div class="row" style="gap: 10px">
+        <button
+          class="primary"
+          :disabled="cachedTracks.length === 0"
+          @click="playAllOffline"
+        >
+          <Icon name="play" size="16" />
+          <span>离线播放全部 ({{ cachedTracks.length }})</span>
+        </button>
+      </div>
+    </div>
+
+    <div v-if="cachedTracks.length === 0" class="empty-cloud-box">
+      <Icon name="offline" size="36" class="muted" />
+      <p>暂无离线缓存歌曲。在播放任意歌曲时，点击底部播放条右侧的「离线缓存」按钮即可保存至本地！</p>
+    </div>
+
+    <TrackList
+      v-else
+      :tracks="cachedTracks.map((c) => c.track)"
+      empty-text="暂无离线歌曲"
+      @error="emit('notify', $event)"
+    />
+  </div>
 </template>
 
 <style scoped>
@@ -733,7 +789,7 @@ function goToSettings(): void {
 
 .fav-tab-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 500;
   box-shadow: 0 2px 8px var(--accent-glow);
@@ -760,13 +816,13 @@ function goToSettings(): void {
 }
 
 .heart-card.netease-heart {
-  background: linear-gradient(135deg, rgba(255, 75, 96, 0.08) 0%, var(--bg-surface) 60%);
-  border-color: rgba(255, 75, 96, 0.25);
+  background: var(--bg-surface);
+  border-color: var(--netease-border);
 }
 
 .heart-card.qq-heart {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-surface) 60%);
-  border-color: rgba(16, 185, 129, 0.25);
+  background: var(--bg-surface);
+  border-color: var(--qq-border);
 }
 
 .heart-card-badge {
@@ -793,7 +849,7 @@ function goToSettings(): void {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-elevated);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -828,11 +884,11 @@ function goToSettings(): void {
 }
 
 .qq-play-theme {
-  background: #10b981;
+  background: var(--qq);
 }
 
 .qq-play-theme:hover {
-  background: #059669;
+  background: var(--qq);
 }
 
 .login-jump-btn {
@@ -898,8 +954,8 @@ function goToSettings(): void {
   width: 90px;
   height: 90px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, rgba(255, 51, 88, 0.2), rgba(255, 75, 96, 0.05));
-  border: 1px solid rgba(255, 51, 88, 0.3);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
   color: var(--accent);
   display: flex;
   align-items: center;
@@ -1004,13 +1060,13 @@ function goToSettings(): void {
   position: absolute;
   top: 8px;
   right: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .cover-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: #19191759;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1027,13 +1083,13 @@ function goToSettings(): void {
   height: 44px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
   transform: scale(0.9);
   transition: transform var(--transition-fast);
 }
@@ -1108,13 +1164,13 @@ function goToSettings(): void {
 }
 
 .card-action-btn.favorited {
-  color: #f43f5e;
+  color: var(--accent);
 }
 
 .playlist-tag {
   font-size: 11px;
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-elevated);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
 }

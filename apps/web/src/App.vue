@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AudioFxDrawer from '@/components/AudioFxDrawer.vue';
 import Icon from '@/components/Icon.vue';
 import LyricDrawer from '@/components/LyricDrawer.vue';
 import PlayerBar from '@/components/PlayerBar.vue';
 import QueueDrawer from '@/components/QueueDrawer.vue';
+import NowPlayingPanel from '@/components/NowPlayingPanel.vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useFavoritesStore } from '@/stores/favorites';
 import { useAudio } from '@/composables/useAudio';
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
 import { useMediaSession } from '@/composables/useMediaSession';
@@ -14,10 +18,19 @@ import { useSettingsStore } from '@/stores/settings';
 const player = usePlayerStore();
 const auth = useAuthStore();
 const settings = useSettingsStore();
+const favorites = useFavoritesStore();
+const route = useRoute();
+const router = useRouter();
+const searchQuery = ref('');
+function search(): void {
+  const q = searchQuery.value.trim();
+  if (q) void router.push({ path: '/search', query: { q } });
+}
 const { errorText, bind, toggle, seek, switchSource } = useAudio();
 
 const queueOpen = ref(false);
 const lyricOpen = ref(false);
+const eqOpen = ref(false);
 const toast = ref('');
 let toastTimer: number | undefined;
 let listeningTrigger: HTMLElement | null = null;
@@ -75,23 +88,17 @@ onMounted(async () => {
     <!-- 侧边导航栏 -->
     <nav class="sidebar" aria-label="主导航" :inert="lyricOpen">
       <div class="brand-wrapper">
-        <div class="brand-logo">
-          <Icon name="music" size="18" />
-        </div>
-        <div class="brand-info">
-          <div class="brand-title">webmuic</div>
-          <div class="brand-subtitle">聚合双平台 · 纯净播放器</div>
-        </div>
+        <span class="brand-wave" aria-hidden="true"><i /><i /><i /></span>
+        <div class="brand-title">webmuic</div>
       </div>
 
-      <div class="nav-group-title">浏览</div>
-      <RouterLink to="/search" class="nav-item" active-class="active">
-        <Icon name="search" size="17" />
-        <span>搜索曲库</span>
-      </RouterLink>
       <RouterLink to="/discover" class="nav-item" active-class="active">
-        <Icon name="discover" size="17" />
-        <span>发现推荐</span>
+        <Icon name="discover" size="18" />
+        <span>发现音乐</span>
+      </RouterLink>
+      <RouterLink to="/search" class="nav-item" active-class="active">
+        <Icon name="search" size="18" />
+        <span>搜索曲库</span>
       </RouterLink>
 
       <div class="nav-group-title" style="margin-top: 10px">我的</div>
@@ -101,9 +108,17 @@ onMounted(async () => {
       </RouterLink>
       <RouterLink to="/settings" class="nav-item" active-class="active">
         <Icon name="settings" size="17" />
-        <span>偏好与凭证</span>
+        <span>偏好与设置</span>
       </RouterLink>
 
+      <div v-if="favorites.playlists.length" class="sidebar-library">
+        <div class="nav-group-title">收藏的歌单</div>
+        <RouterLink v-for="item in favorites.playlists.slice(0, 5)" :key="item.id" :to="`/playlist/${item.id}`" class="library-link">
+          <img v-if="item.coverUrl" :src="item.coverUrl" alt="" loading="lazy">
+          <Icon v-else name="music" size="24" />
+          <span>{{ item.name }}</span>
+        </RouterLink>
+      </div>
       <span class="spacer" />
 
       <!-- 主题切换 -->
@@ -138,6 +153,14 @@ onMounted(async () => {
 
     <!-- 主展示区 -->
     <main class="main" :inert="lyricOpen">
+      <header v-if="route.name !== 'search'" class="app-topbar">
+        <form class="global-search" role="search" @submit.prevent="search">
+          <Icon name="search" size="18" />
+          <input v-model="searchQuery" aria-label="搜索歌曲、歌手或专辑" placeholder="搜索歌曲、歌手或专辑">
+          <button type="submit" class="ghost" aria-label="搜索" :disabled="!searchQuery.trim()"><Icon name="external" size="15" /></button>
+        </form>
+        <button class="ghost topbar-theme" :aria-label="settings.theme === 'light' ? '切换深色主题' : '切换浅色主题'" @click="settings.toggleTheme()"><Icon :name="settings.theme === 'light' ? 'moon' : 'sun'" size="19" /></button>
+      </header>
       <!-- 平台离线告警 -->
       <div v-if="banners.length" class="notice warn">
         <div>
@@ -155,9 +178,14 @@ onMounted(async () => {
       </transition>
 
       <!-- 视图挂载 -->
-      <RouterView v-slot="{ Component }">
-        <component :is="Component" @notify="showToast" />
-      </RouterView>
+      <div class="content-columns" :class="{ 'with-now-playing': player.current && route.name !== 'settings' }">
+        <div class="page-content">
+          <RouterView v-slot="{ Component }">
+            <component :is="Component" @notify="showToast" />
+          </RouterView>
+        </div>
+        <NowPlayingPanel v-if="route.name !== 'settings'" @open-lyric="lyricOpen = true; queueOpen = false; eqOpen = false" @open-queue="queueOpen = true; lyricOpen = false; eqOpen = false" @seek="seek" />
+      </div>
     </main>
 
     <!-- 抽屉背景遮罩 -->
@@ -171,16 +199,20 @@ onMounted(async () => {
     <PlayerBar
       :queue-open="queueOpen"
       :lyric-open="lyricOpen"
+      :eq-open="eqOpen"
       @toggle="toggle"
       @seek="seek"
       @switch-source="switchSource"
-      @open-queue="queueOpen = !queueOpen; if (queueOpen) lyricOpen = false;"
-      @open-lyric="lyricOpen = !lyricOpen; if (lyricOpen) queueOpen = false;"
+      @open-queue="queueOpen = !queueOpen; if (queueOpen) { lyricOpen = false; eqOpen = false; }"
+      @open-lyric="lyricOpen = !lyricOpen; if (lyricOpen) { queueOpen = false; eqOpen = false; }"
+      @open-eq="eqOpen = !eqOpen; if (eqOpen) { queueOpen = false; lyricOpen = false; }"
+      @notify="showToast"
     />
 
     <!-- 抽屉组件 -->
     <QueueDrawer :open="queueOpen" @close="queueOpen = false" />
     <LyricDrawer :open="lyricOpen" @close="lyricOpen = false" @seek="seek" />
+    <AudioFxDrawer :open="eqOpen" @close="eqOpen = false" />
 
     <!-- 播放致命异常弹条 -->
     <div

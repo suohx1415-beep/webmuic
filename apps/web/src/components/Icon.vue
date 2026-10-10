@@ -31,7 +31,9 @@ defineProps<{
     | 'zap'
     | 'flame'
     | 'download'
-    | 'pip';
+    | 'pip'
+    | 'sliders'
+    | 'offline';
   size?: number | string;
 }>();
 </script>
@@ -262,6 +264,24 @@ defineProps<{
     <template v-else-if="name === 'pip'">
       <rect x="2" y="4" width="20" height="16" rx="2" />
       <rect x="12" y="10" width="8" height="8" rx="1" />
+    </template>
+
+    <!-- 均衡器 / 调音台 (sliders) -->
+    <template v-else-if="name === 'sliders'">
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </template>
+
+    <!-- 离线缓存 (offline) -->
+    <template v-else-if="name === 'offline'">
+      <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" />
     </template>
   </svg>
 </template>

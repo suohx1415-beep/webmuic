@@ -122,9 +122,28 @@ onBeforeUnmount(() => clearTimeout(resumeTimer));
             <button v-if="!player.current" class="ghost" @click="emit('close')">返回曲库</button>
           </div>
           <div v-else class="listening-lines">
-            <button v-for="(line, i) in player.lyric" :key="`${i}-${line.time}`" class="listening-line" :class="{ 'is-current': i === player.activeLyricIndex }" :data-line="i" :aria-current="i === player.activeLyricIndex ? 'true' : undefined" :aria-label="`${line.text}，跳至 ${formatTime(line.time)}`" :disabled="!player.streamUrl || player.loadingUrl" @click="onLineClick(line)">
+            <button
+              v-for="(line, i) in player.lyric"
+              :key="`${i}-${line.time}`"
+              class="listening-line"
+              :class="{ 'is-current': i === player.activeLyricIndex }"
+              :data-line="i"
+              :aria-current="i === player.activeLyricIndex ? 'true' : undefined"
+              :aria-label="`${line.text}，跳至 ${formatTime(line.time)}`"
+              :disabled="!player.streamUrl || player.loadingUrl"
+              @click="onLineClick(line)"
+            >
               <span v-if="i === chorusLineIndex" class="listening-chorus-label"><Icon name="flame" size="12" /> 副歌</span>
-              <span>{{ line.text }}</span>
+              <!-- 支持卡拉OK逐字高亮动效 -->
+              <span v-if="line.words && i === player.activeLyricIndex" class="karaoke-text">
+                <span
+                  v-for="(w, wi) in line.words"
+                  :key="wi"
+                  class="karaoke-word"
+                  :class="{ 'is-sung': player.currentTime >= w.start }"
+                >{{ w.text }}</span>
+              </span>
+              <span v-else class="normal-text">{{ line.text }}</span>
               <span v-if="line.translation" class="listening-translation">{{ line.translation }}</span>
             </button>
           </div>
@@ -140,10 +159,10 @@ onBeforeUnmount(() => clearTimeout(resumeTimer));
 
 <style scoped>
 .listening-room {
-  --listen-bg: #111820;
-  --listen-text: #f1f4f5;
-  --listen-secondary: #adb9c3;
-  --listen-quiet: #8495a5;
+  --listen-bg: #1f1b17;
+  --listen-text: #f6ead8;
+  --listen-secondary: #c3b39c;
+  --listen-quiet: #93856f;
   position: fixed;
   inset: 0 0 var(--player-height);
   z-index: 160;
@@ -155,11 +174,11 @@ onBeforeUnmount(() => clearTimeout(resumeTimer));
   flex-direction: column;
   animation: room-enter 220ms ease-out;
 }
-:global([data-theme='light']) .listening-room {
-  --listen-bg: #e9eef0;
-  --listen-text: #182d38;
-  --listen-secondary: #465d69;
-  --listen-quiet: #5d7380;
+:root[data-theme='light'] .listening-room {
+  --listen-bg: #f3ebdb;
+  --listen-text: #2b2118;
+  --listen-secondary: #6b5a47;
+  --listen-quiet: #857560;
 }
 .listening-atmosphere { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .listening-atmosphere img { width: 100%; height: 100%; object-fit: cover; filter: blur(90px) saturate(.65); opacity: .2; transform: scale(1.2); }
@@ -170,13 +189,13 @@ onBeforeUnmount(() => clearTimeout(resumeTimer));
 .record-panel { align-self: center; min-width: 0; }
 .record-artwork { width: min(100%, 42vh, 420px); aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--bg-elevated); box-shadow: 0 22px 65px #0004, 0 0 0 1px #ffffff12; }
 .record-artwork > img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.record-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: #22313e; color: #b3c1ca; }
-.record-groove { width: 76%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: repeating-radial-gradient(circle, #17232e 0 3px, #2b3b48 4px 5px); }
-.record-groove .app-icon { box-sizing: content-box; padding: 20px; background: #8c4657; color: #f4e8eb; border-radius: 50%; }
+.record-placeholder { width: 100%; height: 100%; display: grid; place-items: center; background: #2b2118; color: #c3b39c; }
+.record-groove { width: 76%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: repeating-radial-gradient(circle, #1c1612 0 3px, #352b23 4px 5px); }
+.record-groove .app-icon { box-sizing: content-box; padding: 20px; background: #b5532f; color: #fbf6ea; border-radius: 50%; }
 .record-info { padding-top: 26px; }
 .record-source { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 20px; }
 .record-quality { font-size: 11px; color: var(--listen-secondary); }
-.record-info h2 { margin: 12px 0 6px; font-size: clamp(24px, 2.6vw, 38px); line-height: 1.25; font-weight: 650; letter-spacing: -.035em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.record-info h2 { font-family: var(--font-serif); margin: 12px 0 6px; font-size: clamp(24px, 2.6vw, 38px); line-height: 1.25; font-weight: 500; letter-spacing: -.01em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .record-artist { font-size: 16px; color: var(--listen-secondary); margin: 0; }
 .record-album { color: var(--listen-quiet); font-size: 13px; margin: 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listening-room .record-chorus { margin-top: 22px; padding: 8px 12px; color: var(--listen-text); background: transparent; border-color: var(--border-default); border-radius: 24px; font-size: 12px; }
@@ -191,6 +210,16 @@ onBeforeUnmount(() => clearTimeout(resumeTimer));
 .listening-room .listening-line { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 6px; border: 0; border-radius: 6px; color: var(--listen-quiet); background: transparent; box-shadow: none; text-align: left; font-size: clamp(21px, 2.2vw, 30px); font-weight: 600; line-height: 1.5; transition: color 200ms ease; transform: none; opacity: 1; overflow-wrap: anywhere; }
 .listening-room .listening-line:hover:not(:disabled), .listening-room .listening-line:focus-visible { color: var(--listen-text); background: transparent; }
 .listening-room .listening-line.is-current { color: var(--listen-text); }
+.karaoke-text { display: inline; }
+.karaoke-word {
+  display: inline;
+  color: var(--listen-secondary);
+  transition: color 150ms ease, text-shadow 200ms ease;
+}
+.karaoke-word.is-sung {
+  color: var(--listen-text);
+  text-shadow: none;
+}
 .listening-translation { color: var(--listen-secondary); font-size: .53em; font-weight: 400; line-height: 1.6; }
 .listening-chorus-label { display: inline-flex; align-items: center; gap: 4px; color: var(--listen-secondary); font-size: 10px; font-weight: 400; }
 .listening-empty { min-height: 100%; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; color: var(--listen-secondary); gap: 10px; padding: 20px; }

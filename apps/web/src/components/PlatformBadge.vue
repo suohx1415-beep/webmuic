@@ -37,36 +37,22 @@ defineProps<{ platform: Platform; compact?: boolean }>();
 }
 
 .platform-badge.netease {
-  color: #ff657d;
-  background: rgba(230, 0, 38, 0.1);
-  border: 1px solid rgba(230, 0, 38, 0.25);
+  color: var(--netease);
+  background: var(--netease-soft);
+  border: 1px solid var(--netease-border);
 }
 
 .platform-badge.netease .platform-dot {
-  background: #ff4b60;
-  box-shadow: 0 0 6px rgba(255, 75, 96, 0.6);
+  background: var(--netease);
 }
 
 .platform-badge.qq {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--qq);
+  background: var(--qq-soft);
+  border: 1px solid var(--qq-border);
 }
 
 .platform-badge.qq .platform-dot {
-  background: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
-}
-
-:global([data-theme='light']) .platform-badge.netease {
-  color: #be123c;
-  background: rgba(225, 29, 72, 0.08);
-  border-color: rgba(225, 29, 72, 0.22);
-}
-
-:global([data-theme='light']) .platform-badge.qq {
-  color: #047857;
-  background: rgba(5, 150, 105, 0.08);
-  border-color: rgba(5, 150, 105, 0.22);
+  background: var(--qq);
 }
 </style>

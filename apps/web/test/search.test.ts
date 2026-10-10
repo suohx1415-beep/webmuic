@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { createRenderer, nextTick, ssrContextKey } from 'vue';
+import { createRenderer, nextTick, reactive, ssrContextKey } from 'vue';
 import { api } from '../src/api/client';
 import type { SearchResponse } from '../src/api/types';
 import { useSettingsStore } from '../src/stores/settings';
 import SearchView from '../src/views/SearchView.vue';
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const route = reactive<{ query: { q?: string } }>({ query: {} });
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }), useRoute: () => route }));
 vi.mock('../src/components/TrackList.vue', () => ({ default: { render: () => null } }));
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(),
@@ -48,6 +49,7 @@ function result(query: string, offset = 0): SearchResponse {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  route.query = {};
   setActivePinia(createPinia());
   vi.stubGlobal('document', { documentElement: { setAttribute() {} } });
   vi.stubGlobal('window', globalThis);
@@ -55,6 +57,24 @@ beforeEach(() => {
 afterEach(() => { unmount?.(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('搜索请求状态', () => {
+  it('首页搜索跳转后自动提交路由关键词', async () => {
+    route.query = { q: ' 陈粒 ' };
+    vi.mocked(api.search).mockResolvedValue(result('陈粒'));
+    const state = mountSearch();
+    await nextTick();
+    expect(state.keyword).toBe('陈粒');
+    expect(api.search).toHaveBeenCalledWith({ q: '陈粒', platform: 'all', limit: 20, offset: 0 });
+    expect(state.result?.query).toBe('陈粒');
+  });
+  it('同页面路由关键词变化时重新搜索', async () => {
+    vi.mocked(api.search).mockImplementation(async ({ q }) => result(q));
+    const state = mountSearch();
+    route.query = { q: '新关键词' };
+    await nextTick();
+    await nextTick();
+    expect(state.keyword).toBe('新关键词');
+    expect(state.result?.query).toBe('新关键词');
+  });
   it('慢返回的旧搜索不能覆盖新搜索或清除加载状态', async () => {
     const older = deferred<SearchResponse>();
     const newer = deferred<SearchResponse>();

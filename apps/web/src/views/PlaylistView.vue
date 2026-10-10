@@ -243,7 +243,7 @@ onMounted(() => {
   height: 130px;
   border-radius: var(--radius-md);
   object-fit: cover;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-md);
   flex-shrink: 0;
 }
 
@@ -325,14 +325,14 @@ onMounted(() => {
 }
 
 .hero-action-btn.primary {
-  background: linear-gradient(135deg, #ff4d6e, var(--accent));
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   border: none;
   box-shadow: 0 4px 14px var(--accent-glow);
 }
 
 .hero-action-btn.primary:hover {
-  box-shadow: 0 6px 18px rgba(255, 45, 85, 0.35);
+  box-shadow: none;
 }
 
 .hero-action-btn.secondary {

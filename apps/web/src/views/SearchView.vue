@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { hasMoreSearchResults } from '@/api/searchPage';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { api, ApiError } from '@/api/client';
 import type {
   AlbumCard,
@@ -21,6 +21,7 @@ import { useSettingsStore } from '@/stores/settings';
 
 const emit = defineEmits<{ notify: [message: string] }>();
 const router = useRouter();
+const route = useRoute();
 const settings = useSettingsStore();
 const player = usePlayerStore();
 const favorites = useFavoritesStore();
@@ -198,8 +199,15 @@ function clearQuery(): void {
 }
 
 onMounted(() => {
-  const saved = load(STORAGE_KEYS.lastQuery, '');
-  if (saved) keyword.value = saved;
+  const query = typeof route.query.q === 'string' ? route.query.q.trim() : '';
+  keyword.value = query || load(STORAGE_KEYS.lastQuery, '');
+  if (query) void rememberQuery();
+});
+
+watch(() => route.query.q, (value) => {
+  if (typeof value !== 'string' || !value.trim()) return;
+  keyword.value = value.trim();
+  void rememberQuery();
 });
 
 watch(searchType, () => {
@@ -276,9 +284,6 @@ function openCollectionDetail(id: string): void {
 <template>
   <div class="page-header">
     <h1 class="page-title">搜索曲库</h1>
-    <p class="page-sub">
-      跨平台智能检索网易云与 QQ 音乐的单曲、歌单与专辑，一键解析播放与收藏。
-    </p>
   </div>
 
   <!-- 搜索栏主容器 -->
@@ -289,7 +294,8 @@ function openCollectionDetail(id: string): void {
         <input
           v-model="keyword"
           class="search-input-field"
-          placeholder="搜索歌曲、歌手、歌单或专辑..."
+          aria-label="搜索歌曲、歌手、歌单或专辑"
+          placeholder="搜索歌曲、歌手、歌单或专辑"
           autofocus
           @input="loadSuggestions"
         />
@@ -624,7 +630,7 @@ function openCollectionDetail(id: string): void {
 
 .type-tab-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--bg-canvas);
   border-color: var(--accent);
   font-weight: 500;
 }
@@ -642,7 +648,7 @@ function openCollectionDetail(id: string): void {
 .suggestion-chip {
   padding: 3px 10px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface);
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -670,18 +676,18 @@ function openCollectionDetail(id: string): void {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-elevated);
   color: var(--text-secondary);
 }
 
 .result-source-tag.netease {
-  color: #ff6b8b;
-  border: 1px solid rgba(255, 75, 96, 0.2);
+  color: var(--netease);
+  border: 1px solid var(--netease-border);
 }
 
 .result-source-tag.qq {
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: var(--qq);
+  border: 1px solid var(--qq-border);
 }
 
 /* 歌单/专辑卡片网格布局 */
@@ -741,13 +747,13 @@ function openCollectionDetail(id: string): void {
   position: absolute;
   top: 8px;
   right: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .cover-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: #19191759;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -764,13 +770,13 @@ function openCollectionDetail(id: string): void {
   height: 44px;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
   transform: scale(0.9);
   transition: transform var(--transition-fast);
 }
@@ -845,7 +851,7 @@ function openCollectionDetail(id: string): void {
 }
 
 .card-action-btn.favorited {
-  color: #f43f5e;
+  color: var(--accent);
 }
 
 .load-more-row {

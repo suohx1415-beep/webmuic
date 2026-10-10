@@ -1,6 +1,8 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, ApiError } from '@/api/client';
 import type { LyricResponse } from '@/api/types';
+import { initWebAudioFx, resumeAudioContext } from '@/composables/useAudioEngine';
+import { offlineStorage } from '@/offlineStorage';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -19,6 +21,7 @@ let playAttempt = 0;
 let bound = false;
 let cachedLyricTrackId = '';
 let cachedRawLyric: LyricResponse | null = null;
+let currentObjectUrl = '';
 
 export function useAudio() {
   const player = usePlayerStore();
@@ -28,6 +31,7 @@ export function useAudio() {
     singletonAudio = new Audio();
     singletonAudio.preload = 'auto';
     singletonAudio.crossOrigin = 'anonymous';
+    initWebAudioFx(singletonAudio);
   }
   const element = singletonAudio!;
 
@@ -92,12 +96,36 @@ export function useAudio() {
     player.urlError = '';
     player.degradedNotice = '';
     element.pause();
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = '';
+    }
     element.removeAttribute('src');
     element.load();
     if (!track) {
       player.lyric = [];
       consecutiveFailures.value = 0;
       return;
+    }
+
+    // 1. 优先尝试本地离线缓存
+    try {
+      const cachedBlob = await offlineStorage.getTrackBlob(track.id);
+      if (cachedBlob && token === currentLoadToken && player.current?.id === track.id) {
+        currentObjectUrl = URL.createObjectURL(cachedBlob);
+        player.streamUrl = currentObjectUrl;
+        player.degradedNotice = '正在播放本地离线缓存版本';
+        consecutiveFailures.value = 0;
+        element.src = currentObjectUrl;
+        element.currentTime = 0;
+        player.currentTime = 0;
+        player.loadingUrl = false;
+        resumeAudioContext();
+        if (player.playing) await playMedia();
+        return;
+      }
+    } catch {
+      // 离线读取失败时自动回退在线网关流
     }
 
     try {
@@ -117,6 +145,7 @@ export function useAudio() {
       element.currentTime = 0;
       player.currentTime = 0;
       player.loadingUrl = false;
+      resumeAudioContext();
       if (player.playing) await playMedia();
     } catch (e) {
       if (token !== currentLoadToken || player.current?.id !== track.id) return;

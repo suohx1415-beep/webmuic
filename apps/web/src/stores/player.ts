@@ -8,25 +8,53 @@ interface PersistedQueue {
   index: number;
 }
 
-interface LyricLine {
+export interface LyricWord {
+  text: string;
+  start: number;
+  duration?: number;
+}
+
+export interface LyricLine {
   time: number;
   text: string;
   translation?: string;
+  words?: LyricWord[];
 }
 
 function parseLrc(lrc: string): LyricLine[] {
   const lines: LyricLine[] = [];
   for (const raw of lrc.split('\n')) {
+    // 检查是否包含逐字时间戳，例如 [00:12.34]<00:12.34>你<00:12.80>好
     const matches = [...raw.matchAll(/\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g)];
     if (matches.length === 0) continue;
-    const text = raw.replace(/\[[^\]]*\]/g, '').trim();
-    if (!text) continue;
+    const cleanText = raw.replace(/\[[^\]]*\]/g, '').replace(/<[^>]*>/g, '').trim();
+    if (!cleanText) continue;
+
+    // 解析逐字标记 <00:12.34>字
+    const wordMatches = [...raw.matchAll(/<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>([^<\[]*)/g)];
+    let words: LyricWord[] | undefined;
+    if (wordMatches.length > 0) {
+      words = wordMatches.map((wm) => {
+        const min = Number(wm[1] ?? 0);
+        const sec = Number(wm[2] ?? 0);
+        const frac = Number((wm[3] ?? '0').padEnd(3, '0').slice(0, 3)) / 1000;
+        return {
+          text: wm[4] || '',
+          start: min * 60 + sec + frac,
+        };
+      }).filter((w) => w.text.length > 0);
+    }
+
     for (const m of matches) {
       const minutes = Number(m[1] ?? 0);
       const seconds = Number(m[2] ?? 0);
       const fractionRaw = m[3] ?? '0';
       const fraction = Number(fractionRaw.padEnd(3, '0').slice(0, 3)) / 1000;
-      lines.push({ time: minutes * 60 + seconds + fraction, text });
+      lines.push({
+        time: minutes * 60 + seconds + fraction,
+        text: cleanText,
+        words: words && words.length > 0 ? words : undefined,
+      });
     }
   }
   return lines.sort((a, b) => a.time - b.time);
@@ -234,4 +262,3 @@ export const usePlayerStore = defineStore('player', () => {
   };
 });
 
-export type { LyricLine };

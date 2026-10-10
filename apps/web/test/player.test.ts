@@ -196,9 +196,12 @@ describe('媒体状态同步', () => {
     const { player, audio } = mountAudio();
     player.playTrackList([track('a'), track('b')], track('a'));
     await flush();
-    expect(api.trackUrl).toHaveBeenCalledTimes(4);
-    expect(player.playing).toBe(false);
-    expect(audio.errorText.value).toContain('暂无可用播放地址');
+    // 离线缓存检查增加异步步骤；等待最终状态而不是固定的微任务次数。
+    await vi.waitFor(() => {
+      expect(api.trackUrl).toHaveBeenCalledTimes(4);
+      expect(player.playing).toBe(false);
+      expect(audio.errorText.value).toContain('暂无可用播放地址');
+    });
   });
   it('翻译开关立即更新当前歌词', async () => {
     const { player } = mountAudio();

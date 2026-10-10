@@ -24,7 +24,7 @@ const DEFAULTS: PersistedSettings = {
   volume: 0.8,
   muted: false,
   showTranslation: true,
-  theme: 'dark',
+  theme: 'light',
 };
 
 export const QUALITY_OPTIONS: { value: QualityLevel; label: string; hint: string }[] = [
@@ -44,7 +44,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const volume = ref(initial.volume);
   const muted = ref(initial.muted);
   const showTranslation = ref(initial.showTranslation);
-  const theme = ref<ThemeMode>(initial.theme ?? 'dark');
+  const theme = ref<ThemeMode>(initial.theme ?? DEFAULTS.theme);
 
   const snapshot = computed<PersistedSettings>(() => ({
     quality: quality.value,

@@ -235,10 +235,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-header">
-    <h1 class="page-title">设置与凭证管理</h1>
-    <p class="page-sub">
-      平台凭证仅存储于网关本机环境变量文件，所有进程均绑定至 127.0.0.1，前端不保留敏感 Cookie 明文。
-    </p>
+    <h1 class="page-title">偏好与设置</h1>
   </div>
 
   <div v-if="auth.error" class="notice error">
@@ -309,7 +306,7 @@ onBeforeUnmount(() => {
   <section class="card settings-section">
     <div class="section-card-header">
       <div class="section-card-title">
-        <Icon name="sparkles" size="18" style="color: #38bdf8" />
+        <Icon name="sparkles" size="18" style="color: var(--accent)" />
         <h2>平台服务状态</h2>
       </div>
       <button class="ghost" :disabled="auth.loading" style="font-size: 12px" @click="auth.refresh()">
@@ -584,13 +581,13 @@ onBeforeUnmount(() => {
 }
 
 .health-badge.online {
-  color: #34d399;
-  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .health-badge.offline {
-  color: #f87171;
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 .platform-auth-desc {
@@ -620,7 +617,7 @@ onBeforeUnmount(() => {
   background: #fff;
   padding: 8px;
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-md);
 }
 
 .qr-image {
@@ -640,7 +637,7 @@ onBeforeUnmount(() => {
 }
 
 .qr-state-pill.success {
-  color: #34d399;
+  color: var(--success);
 }
 
 .channel-switch-row {
@@ -673,7 +670,7 @@ onBeforeUnmount(() => {
   background: var(--bg-surface);
   color: var(--text-primary);
   font-weight: 500;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 .manual-cookie-pane {
@@ -693,24 +690,24 @@ onBeforeUnmount(() => {
 }
 
 .clear-danger-btn {
-  border: 1px solid rgba(255, 51, 88, 0.3);
-  color: #ff8ca3;
+  border: 1px solid var(--netease-border);
+  color: var(--danger);
 }
 
 .clear-danger-btn:hover {
-  background: rgba(255, 51, 88, 0.15);
+  background: var(--danger-soft);
 }
 
 .field-error-tip {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #f43f5e;
+  color: var(--danger);
   font-size: 13px;
   margin-top: 10px;
   padding: 8px 12px;
-  background: rgba(244, 63, 94, 0.08);
-  border: 1px solid rgba(244, 63, 94, 0.2);
+  background: var(--danger-soft);
+  border: 1px solid var(--netease-border);
   border-radius: var(--radius-sm);
 }
 </style>

@@ -66,7 +66,7 @@ function toggleFavorite(track: Track): void {
       </div>
 
       <!-- 封面与悬浮试听入口 -->
-      <div class="cover-wrapper" @click.stop="play(track)">
+      <button class="cover-wrapper" :aria-label="`播放 ${track.title}`" @click.stop="play(track)">
         <img v-if="track.album.coverUrl" class="cover" :src="track.album.coverUrl" alt="" loading="lazy" />
         <div v-else class="cover cover-placeholder">
           <Icon name="music" size="16" />
@@ -74,7 +74,7 @@ function toggleFavorite(track: Track): void {
         <div class="cover-play-btn" title="点击播放">
           <Icon :name="isCurrent(track) && player.playing ? 'pause' : 'play'" size="16" />
         </div>
-      </div>
+      </button>
 
       <!-- 标题与歌手专辑元数据 -->
       <div style="min-width: 0">
@@ -127,6 +127,7 @@ function toggleFavorite(track: Track): void {
 </template>
 
 <style scoped>
+button.cover-wrapper { padding: 0; border: 0; }
 .empty-state {
   display: flex;
   flex-direction: column;
