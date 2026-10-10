@@ -3,12 +3,14 @@ import type { Platform } from '@/api/types';
 import { PLATFORM_LABELS } from '@/format';
 
 defineProps<{ platform: Platform; compact?: boolean }>();
+
+const COMPACT_LABELS: Record<Platform, string> = { netease: '网易', qq: 'QQ', local: '本地' };
 </script>
 
 <template>
   <span class="platform-badge" :class="platform">
     <span class="platform-dot" />
-    <span class="platform-text">{{ compact ? (platform === 'netease' ? '网易' : 'QQ') : PLATFORM_LABELS[platform] }}</span>
+    <span class="platform-text">{{ compact ? COMPACT_LABELS[platform] : PLATFORM_LABELS[platform] }}</span>
   </span>
 </template>
 
@@ -54,5 +56,14 @@ defineProps<{ platform: Platform; compact?: boolean }>();
 
 .platform-badge.qq .platform-dot {
   background: var(--qq);
+}
+.platform-badge.local {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+}
+
+.platform-badge.local .platform-dot {
+  background: var(--warn);
 }
 </style>

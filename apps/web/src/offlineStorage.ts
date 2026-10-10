@@ -11,6 +11,11 @@ export interface CachedTrackRecord {
   size: number;
   quality: string;
   cachedAt: number;
+  /** 'local' = 用户导入的本地文件；缺省为在线曲目的离线缓存 */
+  source?: 'cache' | 'local';
+  /** 本地导入时同名 .lrc 的内容 */
+  lyric?: string;
+  fileName?: string;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -36,7 +41,12 @@ function getDb(): Promise<IDBDatabase> {
 }
 
 export const offlineStorage = {
-  async saveTrack(track: Track, blob: Blob, quality = 'high'): Promise<void> {
+  async saveTrack(
+    track: Track,
+    blob: Blob,
+    quality = 'high',
+    extra: Pick<CachedTrackRecord, 'source' | 'lyric' | 'fileName'> = {},
+  ): Promise<void> {
     const db = await getDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -48,6 +58,7 @@ export const offlineStorage = {
         size: blob.size,
         quality,
         cachedAt: Date.now(),
+        ...extra,
       };
       const req = store.put(record);
       req.onsuccess = () => resolve();
@@ -65,6 +76,16 @@ export const offlineStorage = {
         const record = req.result as CachedTrackRecord | undefined;
         resolve(record ? record.blob : null);
       };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async getRecord(trackId: string): Promise<CachedTrackRecord | null> {
+    const db = await getDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(trackId);
+      req.onsuccess = () => resolve((req.result as CachedTrackRecord | undefined) ?? null);
       req.onerror = () => reject(req.error);
     });
   },

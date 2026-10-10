@@ -149,6 +149,22 @@ export const usePlayerStore = defineStore('player', () => {
     return added.length;
   }
 
+  /** 插到当前曲目之后；已在队列里则挪过去 */
+  function playNext(track: Track): void {
+    if (queue.value.length === 0) {
+      setQueue([track], 0);
+      playing.value = true;
+      return;
+    }
+    if (current.value?.id === track.id) return;
+    const currentId = current.value?.id;
+    const rest = queue.value.filter((t) => t.id !== track.id);
+    const at = rest.findIndex((t) => t.id === currentId);
+    rest.splice(at + 1, 0, track);
+    queue.value = rest;
+    index.value = at;
+  }
+
   function playTrackList(tracks: Track[], track: Track): void {
     const at = tracks.findIndex((t) => t.id === track.id);
     setQueue(tracks, at === -1 ? 0 : at);
@@ -252,6 +268,7 @@ export const usePlayerStore = defineStore('player', () => {
     setQueue,
     append,
     playTrackList,
+    playNext,
     playAt,
     removeAt,
     clearQueue,

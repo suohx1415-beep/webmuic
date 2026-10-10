@@ -11,9 +11,11 @@ const props = defineProps<{
   tracks: Track[];
   queueContext?: Track[];
   emptyText?: string;
+  /** 显示「移除」按钮（最近播放、本地音乐等列表用） */
+  removable?: boolean;
 }>();
 
-const emit = defineEmits<{ error: [message: string] }>();
+const emit = defineEmits<{ error: [message: string]; remove: [track: Track] }>();
 
 const player = usePlayerStore();
 const favorites = useFavoritesStore();
@@ -31,6 +33,11 @@ function play(track: Track): void {
 function enqueue(track: Track): void {
   const added = player.append([track]);
   if (added === 0) emit('error', `《${track.title}》已在队列中`);
+}
+
+function playNext(track: Track): void {
+  player.playNext(track);
+  emit('error', `《${track.title}》将在下一首播放`);
 }
 
 function toggleFavorite(track: Track): void {
@@ -102,6 +109,16 @@ function toggleFavorite(track: Track): void {
           <Icon :name="favorites.has(track.id) ? 'heart-filled' : 'heart'" size="16" />
         </button>
 
+        <!-- 下一首播放 -->
+        <button
+          v-if="!isCurrent(track)"
+          class="ghost wide-only"
+          title="下一首播放"
+          @click.stop="playNext(track)"
+        >
+          <Icon name="next" size="15" />
+        </button>
+
         <!-- 添加到队列 -->
         <button
           class="ghost"
@@ -109,6 +126,16 @@ function toggleFavorite(track: Track): void {
           @click.stop="enqueue(track)"
         >
           <Icon name="plus" size="16" />
+        </button>
+
+        <!-- 从列表移除 -->
+        <button
+          v-if="removable"
+          class="ghost"
+          title="从列表移除"
+          @click.stop="emit('remove', track)"
+        >
+          <Icon name="close" size="15" />
         </button>
 
         <!-- 播放 -->
@@ -127,6 +154,7 @@ function toggleFavorite(track: Track): void {
 </template>
 
 <style scoped>
+@media (max-width: 768px) { .track-row .actions button.ghost.wide-only { display: none; } }
 button.cover-wrapper { padding: 0; border: 0; }
 .empty-state {
   display: flex;

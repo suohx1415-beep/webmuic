@@ -12,6 +12,8 @@ export const router = createRouter({
     { path: '/discover', name: 'discover', component: () => import('@/views/DiscoverView.vue') },
     { path: '/playlist/:id', name: 'playlist', component: () => import('@/views/PlaylistView.vue') },
     { path: '/favorites', name: 'favorites', component: () => import('@/views/FavoritesView.vue') },
+    { path: '/recent', name: 'recent', component: () => import('@/views/RecentView.vue') },
+    { path: '/local', name: 'local', component: () => import('@/views/LocalView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/discover' },
   ],

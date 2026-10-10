@@ -1,10 +1,13 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { api, ApiError } from '@/api/client';
 import type { LyricResponse } from '@/api/types';
-import { initWebAudioFx, resumeAudioContext } from '@/composables/useAudioEngine';
+import { canFade, fadeTo, initWebAudioFx, resumeAudioContext, setFadeLevel } from '@/composables/useAudioEngine';
 import { offlineStorage } from '@/offlineStorage';
+import { load, save, STORAGE_KEYS } from '@/storage';
+import { useHistoryStore } from '@/stores/history';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
+import { useSleepTimerStore } from '@/stores/sleepTimer';
 
 /**
  * 音频元素与播放器 store 的桥接层。
@@ -22,10 +25,25 @@ let bound = false;
 let cachedLyricTrackId = '';
 let cachedRawLyric: LyricResponse | null = null;
 let currentObjectUrl = '';
+/** 本次加载的曲目是否已计入播放历史 */
+let countedTrackId = '';
+/** 曲尾淡出是否已经开始（避免每次 timeupdate 重复触发） */
+let tailFading = false;
+/** 本次加载内因媒体错误自动重试过的曲目，防止死循环 */
+let retriedTrackId = '';
+/** 待恢复的播放位置：刷新页面后续播、出错重试时回到原处 */
+let pendingResume: { trackId: string; time: number } | null = load<{ trackId: string; time: number } | null>(
+  STORAGE_KEYS.playback,
+  null,
+);
+let lastPositionSave = 0;
+let prefetchedId = '';
 
 export function useAudio() {
   const player = usePlayerStore();
   const settings = useSettingsStore();
+  const history = useHistoryStore();
+  const sleepTimer = useSleepTimerStore();
 
   if (!singletonAudio && typeof Audio !== 'undefined') {
     singletonAudio = new Audio();
@@ -43,9 +61,13 @@ export function useAudio() {
     if (!player.streamUrl || player.loadingUrl || !player.playing) return;
     const attempt = ++playAttempt;
     const token = currentLoadToken;
+    const fading = settings.fade && canFade();
+    if (fading) setFadeLevel(0);
     try {
       await element.play();
+      if (fading && attempt === playAttempt) void fadeTo(1, settings.fadeMs);
     } catch (error) {
+      setFadeLevel(1);
       // 快速切歌或调用 pause() 会中断之前的 play() 请求并抛出 AbortError，属于正常控制流，静默忽略
       if (error instanceof Error && error.name === 'AbortError') return;
       if (attempt !== playAttempt || token !== currentLoadToken || !player.playing) return;
@@ -57,19 +79,91 @@ export function useAudio() {
   }
 
   const onTimeUpdate = () => {
-    if (!player.loadingUrl && player.streamUrl) player.currentTime = element.currentTime;
+    if (player.loadingUrl || !player.streamUrl) return;
+    const t = element.currentTime;
+    player.currentTime = t;
+    const track = player.current;
+    if (!track) return;
+
+    // 听满 30 秒或半首才算一次有效播放
+    const total = player.duration;
+    if (countedTrackId !== track.id && total > 0 && t >= Math.min(30, total / 2)) {
+      countedTrackId = track.id;
+      history.record(track);
+    }
+
+    // 每 5 秒记一次进度，刷新页面后可以接着听
+    const now = Date.now();
+    if (now - lastPositionSave > 5000) {
+      lastPositionSave = now;
+      save(STORAGE_KEYS.playback, { trackId: track.id, time: t });
+    }
+
+    // 曲尾淡出：单曲循环与「播完这首就停」也同样平滑
+    const fadeSec = settings.fadeMs / 1000;
+    if (settings.fade && canFade() && !tailFading && total > fadeSec * 3 && total - t <= fadeSec && !element.paused) {
+      tailFading = true;
+      void fadeTo(0, Math.max(0, (total - t) * 1000));
+    }
   };
   const onDurationChange = () => {
     if (player.streamUrl && Number.isFinite(element.duration)) player.mediaDuration = element.duration;
   };
   const onEnded = () => {
-    if (!player.loadingUrl && player.streamUrl) player.advance(false);
+    if (player.loadingUrl || !player.streamUrl) return;
+    if (sleepTimer.mode === 'end-of-track') {
+      sleepTimer.cancel();
+      player.playing = false;
+      setFadeLevel(1);
+      player.advance(true);
+      player.playing = false;
+      errorText.value = '';
+      player.degradedNotice = '定时关闭：已在这首歌结束后停止';
+      return;
+    }
+    player.advance(false);
   };
   const onError = () => {
     if (!player.streamUrl || player.loadingUrl || !element.error) return;
+    const track = player.current;
+    // 在线地址过期（403）是常见原因：自动从原位置重试一次，用户无感
+    if (track && track.platform !== 'local' && retriedTrackId !== track.id) {
+      retriedTrackId = track.id;
+      pendingResume = { trackId: track.id, time: player.currentTime };
+      void loadCurrent(true);
+      return;
+    }
     player.playing = false;
-    errorText.value = '音频加载失败，可能是地址已过期，请点击播放重试或切歌';
+    errorText.value = track?.platform === 'local'
+      ? '本地文件无法播放，可能已损坏或浏览器不支持这种格式'
+      : '音频加载失败，请点击播放重试或切歌';
   };
+
+  /** 把待恢复的位置应用到刚设置好 src 的元素上 */
+  function applyResume(trackId: string): void {
+    if (pendingResume?.trackId === trackId && pendingResume.time > 1) {
+      element.currentTime = pendingResume.time;
+      player.currentTime = pendingResume.time;
+    } else {
+      element.currentTime = 0;
+      player.currentTime = 0;
+    }
+    pendingResume = null;
+  }
+
+  /** 预取下一首的播放地址：网关会缓存 30 分钟，切歌时几乎瞬间出声 */
+  function prefetchNext(): void {
+    if (player.mode === 'shuffle' || player.queue.length < 2) return;
+    const nextTrack = player.queue[(player.index + 1) % player.queue.length];
+    if (!nextTrack || nextTrack.platform === 'local' || nextTrack.id === prefetchedId) return;
+    prefetchedId = nextTrack.id;
+    setTimeout(() => {
+      if (player.queue[(player.index + 1) % player.queue.length]?.id !== nextTrack.id) return;
+      api.trackUrl(nextTrack.id, settings.quality).catch(() => {
+        prefetchedId = '';
+      });
+    }, 4000);
+  }
 
   function bind(): void {
     if (bound) return;
@@ -83,10 +177,13 @@ export function useAudio() {
     element.addEventListener('error', onError);
   }
 
-  async function loadCurrent(): Promise<void> {
+  async function loadCurrent(isRetry = false): Promise<void> {
     const track = player.current;
     const token = ++currentLoadToken;
     ++playAttempt;
+    tailFading = false;
+    if (!isRetry) retriedTrackId = '';
+    if (countedTrackId !== track?.id) countedTrackId = '';
     player.loadingUrl = !!track;
     player.streamUrl = '';
     player.resolved = null;
@@ -114,11 +211,10 @@ export function useAudio() {
       if (cachedBlob && token === currentLoadToken && player.current?.id === track.id) {
         currentObjectUrl = URL.createObjectURL(cachedBlob);
         player.streamUrl = currentObjectUrl;
-        player.degradedNotice = '正在播放本地离线缓存版本';
+        player.degradedNotice = track.platform === 'local' ? '' : '正在播放本地离线缓存版本';
         consecutiveFailures.value = 0;
         element.src = currentObjectUrl;
-        element.currentTime = 0;
-        player.currentTime = 0;
+        applyResume(track.id);
         player.loadingUrl = false;
         resumeAudioContext();
         if (player.playing) await playMedia();
@@ -126,6 +222,15 @@ export function useAudio() {
       }
     } catch {
       // 离线读取失败时自动回退在线网关流
+    }
+
+    if (track.platform === 'local') {
+      if (token !== currentLoadToken) return;
+      player.loadingUrl = false;
+      player.playing = false;
+      player.urlError = `《${track.title}》的本地文件已不在浏览器曲库中，请到「本地音乐」重新导入`;
+      errorText.value = player.urlError;
+      return;
     }
 
     try {
@@ -142,11 +247,11 @@ export function useAudio() {
       }
       consecutiveFailures.value = 0;
       element.src = info.url;
-      element.currentTime = 0;
-      player.currentTime = 0;
+      applyResume(track.id);
       player.loadingUrl = false;
       resumeAudioContext();
       if (player.playing) await playMedia();
+      prefetchNext();
     } catch (e) {
       if (token !== currentLoadToken || player.current?.id !== track.id) return;
       const apiError = e instanceof ApiError ? e : null;
@@ -214,6 +319,19 @@ export function useAudio() {
       return;
     }
 
+    if (track.platform === 'local') {
+      try {
+        const record = await offlineStorage.getRecord(track.id);
+        if (token !== currentLyricToken || player.current?.id !== track.id) return;
+        const lines = player.parseLrc(record?.lyric ?? '');
+        player.lyric = lines;
+        if (lines.length === 0) player.lyricError = '这首本地歌曲没有歌词（导入时放一个同名 .lrc 文件即可）';
+      } catch {
+        player.lyricError = '本地歌词读取失败';
+      }
+      return;
+    }
+
     try {
       const body = await api.lyric(track.id);
       if (token !== currentLyricToken || player.current?.id !== track.id) return;
@@ -233,6 +351,11 @@ export function useAudio() {
     const end = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : player.duration;
     element.currentTime = Math.max(0, end > 0 ? Math.min(seconds, end) : seconds);
     player.currentTime = element.currentTime;
+    // 曲尾淡出后又往回拖：把音量拉回来
+    if (tailFading && (end <= 0 || end - element.currentTime > settings.fadeMs / 1000)) {
+      tailFading = false;
+      if (player.playing) void fadeTo(1, 200);
+    }
   }
 
   function toggle(): void {
@@ -263,19 +386,49 @@ export function useAudio() {
     (shouldPlay) => {
       if (shouldPlay && element.paused && !player.loadingUrl) {
         void playMedia();
-      } else if (!shouldPlay) {
+      } else if (shouldPlay && !element.paused) {
+        // 暂停淡出还没结束就又点了播放：取消暂停，把音量拉回来
         ++playAttempt;
-        element.pause();
+        void fadeTo(1, 200);
+      } else if (!shouldPlay) {
+        const attempt = ++playAttempt;
+        if (settings.fade && canFade() && !element.paused) {
+          // 暂停淡出要短一些，按下去要有「立刻在停」的反馈
+          void fadeTo(0, Math.min(350, settings.fadeMs)).then(() => {
+            if (attempt === playAttempt && !player.playing) element.pause();
+          });
+        } else {
+          element.pause();
+        }
       }
     },
   );
 
   watch(() => player.restartRequest, () => {
+    tailFading = false;
     seek(0);
     if (player.playing) void playMedia();
   });
 
   watch(() => settings.showTranslation, () => void loadLyric());
+
+  // 定时关闭到点：慢慢淡出再暂停，不把人从睡梦中吵醒
+  watch(
+    () => sleepTimer.expired,
+    async () => {
+      if (!player.playing) return;
+      if (canFade()) await fadeTo(0, 8000);
+      player.playing = false;
+      element.pause();
+      player.degradedNotice = '定时关闭：已暂停播放';
+    },
+  );
+
+  // 离开页面前记下精确进度
+  const savePosition = () => {
+    if (player.current && player.streamUrl) save(STORAGE_KEYS.playback, { trackId: player.current.id, time: element.currentTime });
+  };
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', savePosition);
 
   // 音量/静音
   watch(
@@ -306,11 +459,16 @@ export function useAudio() {
     element.removeEventListener('durationchange', onDurationChange);
     element.removeEventListener('ended', onEnded);
     element.removeEventListener('error', onError);
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', savePosition);
   });
 
   async function switchSource(): Promise<boolean> {
     const track = player.current;
     if (!track) return false;
+    if (track.platform === 'local') {
+      errorText.value = '本地歌曲不需要换源';
+      return false;
+    }
     errorText.value = '正在跨平台寻找可用音源…';
     try {
       const matchRes = await api.matchTrack(track.id);

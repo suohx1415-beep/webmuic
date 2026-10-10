@@ -5,6 +5,8 @@ let sourceNode: MediaElementAudioSourceNode | null = null;
 let biquadFilters: BiquadFilterNode[] = [];
 let bassFilter: BiquadFilterNode | null = null;
 let connectedElement: HTMLAudioElement | null = null;
+/** 链路末端的渐变音量节点：淡入淡出只动它，不碰 element.volume（那是用户音量） */
+let fadeGain: GainNode | null = null;
 
 export function initWebAudioFx(element: HTMLAudioElement): void {
   if (typeof window === 'undefined') return;
@@ -47,7 +49,10 @@ export function initWebAudioFx(element: HTMLAudioElement): void {
       prevNode = filter;
     }
     prevNode.connect(bassFilter);
-    bassFilter.connect(audioCtx.destination);
+    fadeGain = audioCtx.createGain();
+    fadeGain.gain.value = 1;
+    bassFilter.connect(fadeGain);
+    fadeGain.connect(audioCtx.destination);
   }
 
   // 监听并同步 Store
@@ -81,4 +86,30 @@ export function resumeAudioContext(): void {
   if (audioCtx && audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
   }
+}
+
+/** 渐变是否可用（Web Audio 链路已建立） */
+export function canFade(): boolean {
+  return !!(audioCtx && fadeGain);
+}
+
+/** 立即把渐变音量设为某个值 */
+export function setFadeLevel(value: number): void {
+  if (!audioCtx || !fadeGain) return;
+  fadeGain.gain.cancelScheduledValues(audioCtx.currentTime);
+  fadeGain.gain.setValueAtTime(value, audioCtx.currentTime);
+}
+
+/** 在 ms 毫秒内线性渐变到 target；不支持 Web Audio 时立即完成 */
+export function fadeTo(target: number, ms: number): Promise<void> {
+  if (!audioCtx || !fadeGain || ms <= 0) {
+    setFadeLevel(target);
+    return Promise.resolve();
+  }
+  const now = audioCtx.currentTime;
+  const gain = fadeGain.gain;
+  gain.cancelScheduledValues(now);
+  gain.setValueAtTime(gain.value, now);
+  gain.linearRampToValueAtTime(target, now + ms / 1000);
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

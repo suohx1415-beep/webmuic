@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import type { Platform, QualityLevel } from '@/api/types';
+import type { QualityLevel, RemotePlatform } from '@/api/types';
 import { load, save, STORAGE_KEYS } from '@/storage';
 
-export type PlatformFilter = 'all' | Platform;
+export type PlatformFilter = 'all' | RemotePlatform;
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -15,6 +15,10 @@ interface PersistedSettings {
   muted: boolean;
   showTranslation: boolean;
   theme: ThemeMode;
+  /** 播放/暂停/切歌时音量渐变 */
+  fade: boolean;
+  /** 渐变时长（毫秒） */
+  fadeMs: number;
 }
 
 const DEFAULTS: PersistedSettings = {
@@ -25,6 +29,8 @@ const DEFAULTS: PersistedSettings = {
   muted: false,
   showTranslation: true,
   theme: 'light',
+  fade: true,
+  fadeMs: 800,
 };
 
 export const QUALITY_OPTIONS: { value: QualityLevel; label: string; hint: string }[] = [
@@ -45,6 +51,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const muted = ref(initial.muted);
   const showTranslation = ref(initial.showTranslation);
   const theme = ref<ThemeMode>(initial.theme ?? DEFAULTS.theme);
+  const fade = ref(initial.fade);
+  const fadeMs = ref(initial.fadeMs);
 
   const snapshot = computed<PersistedSettings>(() => ({
     quality: quality.value,
@@ -54,6 +62,8 @@ export const useSettingsStore = defineStore('settings', () => {
     muted: muted.value,
     showTranslation: showTranslation.value,
     theme: theme.value,
+    fade: fade.value,
+    fadeMs: fadeMs.value,
   }));
 
   watch(
@@ -82,7 +92,9 @@ export const useSettingsStore = defineStore('settings', () => {
     muted.value = DEFAULTS.muted;
     showTranslation.value = DEFAULTS.showTranslation;
     theme.value = DEFAULTS.theme;
+    fade.value = DEFAULTS.fade;
+    fadeMs.value = DEFAULTS.fadeMs;
   }
 
-  return { quality, platform, limit, volume, muted, showTranslation, theme, toggleTheme, reset };
+  return { quality, platform, limit, volume, muted, showTranslation, theme, fade, fadeMs, toggleTheme, reset };
 });

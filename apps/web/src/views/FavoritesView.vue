@@ -29,7 +29,7 @@ const cachedTracks = ref<CachedTrackRecord[]>([]);
 
 async function loadCachedTracks(): Promise<void> {
   try {
-    cachedTracks.value = await offlineStorage.getAllCachedTracks();
+    cachedTracks.value = (await offlineStorage.getAllCachedTracks()).filter((r) => r.source !== 'local' && r.track.platform !== 'local');
   } catch {
     cachedTracks.value = [];
   }

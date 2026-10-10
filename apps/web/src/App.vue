@@ -61,6 +61,18 @@ useKeyboardShortcuts({
   },
 });
 
+// 标签页标题跟随当前曲目，切到别的窗口也知道在放什么
+watch(
+  () => [player.current?.id, player.playing] as const,
+  () => {
+    const track = player.current;
+    document.title = track
+      ? `${player.playing ? '▶ ' : '❚❚ '}${track.title} - ${track.artists.map((a) => a.name).join(' / ')} · webmuic`
+      : 'webmuic';
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   clearTimeout(toastTimer);
 });
@@ -106,6 +118,14 @@ onMounted(async () => {
       <RouterLink to="/favorites" class="nav-item" active-class="active">
         <Icon name="heart" size="17" />
         <span>我的收藏</span>
+      </RouterLink>
+      <RouterLink to="/recent" class="nav-item" active-class="active">
+        <Icon name="history" size="17" />
+        <span>最近播放</span>
+      </RouterLink>
+      <RouterLink to="/local" class="nav-item" active-class="active">
+        <Icon name="folder" size="17" />
+        <span>本地音乐</span>
       </RouterLink>
       <RouterLink to="/settings" class="nav-item" active-class="active">
         <Icon name="settings" size="17" />

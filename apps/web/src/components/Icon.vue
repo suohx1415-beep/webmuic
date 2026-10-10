@@ -33,7 +33,11 @@ defineProps<{
     | 'download'
     | 'pip'
     | 'sliders'
-    | 'offline';
+    | 'offline'
+    | 'history'
+    | 'timer'
+    | 'folder'
+    | 'trash';
   size?: number | string;
 }>();
 </script>
@@ -282,6 +286,30 @@ defineProps<{
     <!-- 离线缓存 (offline) -->
     <template v-else-if="name === 'offline'">
       <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" />
+    </template>
+    <!-- 最近播放 (history) -->
+    <template v-else-if="name === 'history'">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+      <polyline points="12 7 12 12 15.5 14" />
+    </template>
+
+    <!-- 定时 (timer) -->
+    <template v-else-if="name === 'timer'">
+      <circle cx="12" cy="13" r="8" />
+      <polyline points="12 9 12 13 14.5 15" />
+      <line x1="9" y1="2" x2="15" y2="2" />
+    </template>
+
+    <!-- 本地文件夹 (folder) -->
+    <template v-else-if="name === 'folder'">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </template>
+
+    <!-- 删除 (trash) -->
+    <template v-else-if="name === 'trash'">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </template>
   </svg>
 </template>

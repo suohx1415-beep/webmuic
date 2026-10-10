@@ -297,6 +297,18 @@ onBeforeUnmount(() => {
       </label>
     </div>
 
+    <div class="setting-toggle-row fade-row">
+      <label class="row" style="cursor: pointer; gap: 8px">
+        <input type="checkbox" v-model="settings.fade" style="width: auto" />
+        <span>播放、暂停与切歌时音量淡入淡出</span>
+      </label>
+      <label v-if="settings.fade" class="row fade-range" style="gap: 10px">
+        <span class="field-label">渐变时长</span>
+        <input v-model.number="settings.fadeMs" type="range" min="200" max="3000" step="100" aria-label="渐变时长" />
+        <span class="fade-value">{{ (settings.fadeMs / 1000).toFixed(1) }} 秒</span>
+      </label>
+    </div>
+
     <div class="field-tip">
       无损 (FLAC) 与 Hi-Res 需对应平台已配置有效会员；匿名状态下网关将自动回退至最高可用档位。
     </div>
@@ -710,4 +722,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--netease-border);
   border-radius: var(--radius-sm);
 }
+.fade-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.fade-range input[type='range'] { width: 160px; }
+.fade-value { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; min-width: 44px; }
 </style>

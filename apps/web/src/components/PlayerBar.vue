@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import Icon from '@/components/Icon.vue';
 import PlatformBadge from '@/components/PlatformBadge.vue';
 import { useDesktopLyricPip } from '@/composables/useDesktopLyricPip';
 import { artistNames, formatTime, thumb } from '@/format';
 import { usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
+import { SLEEP_PRESETS, useSleepTimerStore } from '@/stores/sleepTimer';
 
 const props = defineProps<{
   queueOpen: boolean;
@@ -25,6 +26,29 @@ const emit = defineEmits<{
 
 const player = usePlayerStore();
 const settings = useSettingsStore();
+const sleepTimer = useSleepTimerStore();
+const sleepOpen = ref(false);
+const isLocal = computed(() => player.current?.platform === 'local');
+
+function setSleep(minutes: number | 'end'): void {
+  if (minutes === 'end') sleepTimer.startEndOfTrack();
+  else sleepTimer.startMinutes(minutes);
+  sleepOpen.value = false;
+  emit('notify', minutes === 'end' ? '定时关闭：这首歌播完后停止' : `定时关闭：${minutes} 分钟后停止播放`);
+}
+
+// 点菜单外面就收起
+function onDocClick(event: MouseEvent): void {
+  if (sleepOpen.value && !(event.target as HTMLElement).closest('.sleep-wrap, .player-more')) sleepOpen.value = false;
+}
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
+
+function cancelSleep(): void {
+  sleepTimer.cancel();
+  sleepOpen.value = false;
+  emit('notify', '已取消定时关闭');
+}
 const { isPipActive, isSupported: isPipSupported, togglePip } = useDesktopLyricPip();
 
 const progressPercent = computed(() => {
@@ -356,6 +380,27 @@ async function cacheCurrentTrack(): Promise<void> {
         <Icon name="pip" size="16" />
       </button>
 
+      <div class="sleep-wrap">
+        <button
+          class="transport-btn sleep-toggle"
+          :class="{ active: sleepTimer.active }"
+          :title="sleepTimer.active ? `定时关闭：${sleepTimer.label}` : '定时关闭'"
+          :aria-expanded="sleepOpen"
+          @click="sleepOpen = !sleepOpen"
+        >
+          <Icon name="timer" size="16" />
+          <span v-if="sleepTimer.active" class="sleep-label">{{ sleepTimer.label }}</span>
+        </button>
+        <div v-if="sleepOpen" class="sleep-menu" role="menu" @keydown.esc="sleepOpen = false">
+          <div class="sleep-menu-title">定时关闭</div>
+          <div class="sleep-grid">
+            <button v-for="m in SLEEP_PRESETS" :key="m" role="menuitem" @click="setSleep(m)">{{ m }} 分钟</button>
+          </div>
+          <button class="sleep-wide" role="menuitem" :class="{ on: sleepTimer.mode === 'end-of-track' }" @click="setSleep('end')">播完这首就停</button>
+          <button v-if="sleepTimer.active" class="sleep-wide sleep-cancel" role="menuitem" @click="cancelSleep">取消定时（剩余 {{ sleepTimer.label }}）</button>
+        </div>
+      </div>
+
       <button
         class="transport-btn eq-toggle"
         :class="{ active: props.eqOpen }"
@@ -367,7 +412,7 @@ async function cacheCurrentTrack(): Promise<void> {
       </button>
 
       <button
-        v-if="player.current"
+        v-if="player.current && !isLocal"
         class="transport-btn"
         :disabled="isCaching"
         style="width: 28px; height: 28px"
@@ -378,7 +423,7 @@ async function cacheCurrentTrack(): Promise<void> {
       </button>
 
       <button
-        v-if="player.current"
+        v-if="player.current && !isLocal"
         class="transport-btn"
         style="width: 28px; height: 28px"
         title="下载当前音频文件"
@@ -388,7 +433,7 @@ async function cacheCurrentTrack(): Promise<void> {
       </button>
 
       <button
-        v-if="player.current"
+        v-if="player.current && !isLocal"
         class="transport-btn"
         style="width: 28px; height: 28px"
         title="跨平台换源（自动寻找另一平台匹配曲目）"
@@ -398,9 +443,10 @@ async function cacheCurrentTrack(): Promise<void> {
       </button>
       <button class="transport-btn more-toggle" aria-label="更多播放操作" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen">•••</button>
       <div v-if="moreOpen" class="player-more" @keydown.esc="moreOpen = false">
-        <button :disabled="!player.current || isCaching" @click="cacheCurrentTrack(); moreOpen = false"><Icon name="offline" size="16" />离线缓存</button>
-        <button :disabled="!player.current" @click="downloadCurrentTrack(); moreOpen = false"><Icon name="download" size="16" />下载音频</button>
-        <button :disabled="!player.current" @click="emit('switchSource'); moreOpen = false"><Icon name="refresh" size="16" />切换来源</button>
+        <button :disabled="!player.current || isCaching || isLocal" @click="cacheCurrentTrack(); moreOpen = false"><Icon name="offline" size="16" />离线缓存</button>
+        <button :disabled="!player.current || isLocal" @click="downloadCurrentTrack(); moreOpen = false"><Icon name="download" size="16" />下载音频</button>
+        <button :disabled="!player.current || isLocal" @click="emit('switchSource'); moreOpen = false"><Icon name="refresh" size="16" />切换来源</button>
+        <button @click="sleepOpen = true; moreOpen = false"><Icon name="timer" size="16" />{{ sleepTimer.active ? `定时 ${sleepTimer.label}` : '定时关闭' }}</button>
         <button v-if="isPipSupported" @click="togglePip(); moreOpen = false"><Icon name="pip" size="16" />桌面歌词</button>
         <button @click="settings.muted = !settings.muted">{{ settings.muted ? '取消静音' : '静音' }}</button>
         <button @click="moreOpen = false">收起</button>
@@ -410,10 +456,25 @@ async function cacheCurrentTrack(): Promise<void> {
 </template>
 
 <style scoped>
+.sleep-wrap { position: relative; display: flex; }
+.layout .transport-btn.sleep-toggle { width: auto; min-width: 28px; height: 28px; padding: 0 6px; gap: 4px; }
+.sleep-label { font-size: 11px; font-variant-numeric: tabular-nums; }
+.sleep-menu { position: absolute; bottom: calc(100% + 12px); right: -40px; z-index: 30; width: 220px; padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 6px; }
+.sleep-menu-title { font-family: var(--font-serif); font-size: 15px; margin: 0 2px 4px; }
+.sleep-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sleep-grid button, .sleep-wide { font-size: 12px; padding: 7px 4px; font-weight: 400; }
+.sleep-wide { width: 100%; }
+.sleep-wide.on { border-color: var(--accent-border); color: var(--accent); }
+.sleep-cancel { color: var(--text-secondary); border-style: dashed; }
 .more-toggle { display: none; }
 .player-more { position: absolute; bottom: calc(100% + 10px); right: 0; width: 170px; padding: 8px; border: 1px solid var(--border-default); background: var(--bg-surface); box-shadow: var(--shadow-lg); border-radius: 10px; display: flex; flex-direction: column; gap: 3px; }
 .player-more button { justify-content: flex-start; border: 0; background: transparent; padding: 10px; }
-@media (max-width: 768px) { .more-toggle { display: inline-flex; } }
+@media (max-width: 768px) {
+  .more-toggle { display: inline-flex; }
+  .layout .player-actions .sleep-wrap { display: flex; }
+  .layout .player-actions .sleep-toggle { display: none; }
+  .sleep-menu { right: 0; }
+}
 .player-cover-box {
   padding: 0;
   border: 0;

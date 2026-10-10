@@ -1,6 +1,8 @@
 /** 与网关契约一一对应的类型（见 docs/api-contract.md） */
 
-export type Platform = 'netease' | 'qq';
+/** 'local' 只存在于前端：用户导入的本地文件，不会发给网关 */
+export type Platform = 'netease' | 'qq' | 'local';
+export type RemotePlatform = Exclude<Platform, 'local'>;
 export type QualityLevel = 'standard' | 'high' | 'lossless' | 'hires';
 
 export interface Quality {
@@ -29,16 +31,16 @@ export interface Track {
 }
 
 export interface DegradedInfo {
-  platforms: Platform[];
-  reasons: Partial<Record<Platform, string>>;
+  platforms: RemotePlatform[];
+  reasons: Partial<Record<RemotePlatform, string>>;
 }
 
 export interface SearchResponse {
   query: string;
   offset: number;
   limit: number;
-  counts: Partial<Record<Platform, number>>;
-  totals: Partial<Record<Platform, number>>;
+  counts: Partial<Record<RemotePlatform, number>>;
+  totals: Partial<Record<RemotePlatform, number>>;
   tracks: Track[];
   degraded?: DegradedInfo;
 }
@@ -71,7 +73,7 @@ export type SearchType = 'song' | 'playlist' | 'album';
 
 export interface PlaylistCard {
   id: string;
-  platform: Platform;
+  platform: RemotePlatform;
   platformId: string;
   type: 'playlist';
   name: string;
@@ -84,7 +86,7 @@ export interface PlaylistCard {
 
 export interface AlbumCard {
   id: string;
-  platform: Platform;
+  platform: RemotePlatform;
   platformId: string;
   type: 'album';
   name: string;
@@ -99,8 +101,8 @@ export interface SearchPlaylistsResponse {
   type: 'playlist';
   offset: number;
   limit: number;
-  counts: Partial<Record<Platform, number>>;
-  totals: Partial<Record<Platform, number>>;
+  counts: Partial<Record<RemotePlatform, number>>;
+  totals: Partial<Record<RemotePlatform, number>>;
   playlists: PlaylistCard[];
   degraded?: DegradedInfo;
 }
@@ -110,15 +112,15 @@ export interface SearchAlbumsResponse {
   type: 'album';
   offset: number;
   limit: number;
-  counts: Partial<Record<Platform, number>>;
-  totals: Partial<Record<Platform, number>>;
+  counts: Partial<Record<RemotePlatform, number>>;
+  totals: Partial<Record<RemotePlatform, number>>;
   albums: AlbumCard[];
   degraded?: DegradedInfo;
 }
 
 export interface PlaylistResponse {
   id: string;
-  platform: Platform;
+  platform: RemotePlatform;
   name: string;
   coverUrl?: string;
   description?: string;
@@ -140,7 +142,7 @@ export interface UserLibraryResponse {
 }
 
 export interface RecommendSection {
-  platform: Platform;
+  platform: RemotePlatform;
   title: string;
   tracks: Track[];
   /** 有对应歌单时可跳转（如 QQ 热歌歌单） */
@@ -156,14 +158,14 @@ export interface RecommendResponse {
 }
 
 export interface CredentialStatus {
-  platform: Platform;
+  platform: RemotePlatform;
   state: 'configured' | 'anonymous';
   fingerprint: string;
   hasMemberKey: boolean;
 }
 
 export interface HealthPlatform {
-  platform: Platform;
+  platform: RemotePlatform;
   reachable: boolean;
   upstreamStatus: number | null;
   latencyMs: number;
@@ -193,5 +195,5 @@ export interface QrCheckResponse {
 }
 
 export interface ApiErrorBody {
-  error: { code: string; message: string; platform?: Platform };
+  error: { code: string; message: string; platform?: RemotePlatform };
 }

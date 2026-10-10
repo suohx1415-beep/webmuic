@@ -11,6 +11,7 @@ export function formatTime(seconds: number): string {
 export const PLATFORM_LABELS: Record<Platform, string> = {
   netease: '网易云',
   qq: 'QQ 音乐',
+  local: '本地',
 };
 
 export const QUALITY_LABELS: Record<QualityLevel, string> = {
@@ -28,6 +29,7 @@ export function artistNames(track: Track): string {
 export function formatBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return '';
   const mb = bytes / 1024 / 1024;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 }
 
